@@ -12,9 +12,17 @@ Some configurations won't converge.
 - LSTM loss decrease patterns during training can be quite different
 from what you see with CNNs/MLPs/etc.
 '''
+
 from __future__ import print_function
 import numpy as np
 np.random.seed(1337)  # for reproducibility
+
+import os
+os.environ['THEANO_FLAGS']='device=gpu2'
+os.environ['KERAS_BACKEND'] = 'theano'
+CopyRoot  = os.path.join('..','..','..')
+kerasversion = 'keras-1'
+
 
 from keras.preprocessing import sequence
 from keras.utils import np_utils
@@ -23,6 +31,8 @@ from keras.layers.core import Dense, Dropout, Activation
 from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM, SimpleRNN, GRU
 from keras.datasets import imdb
+
+import time
 
 max_features = 20000
 maxlen = 80  # cut texts after this number of words (among top max_features most common words)
@@ -41,6 +51,7 @@ print('X_train shape:', X_train.shape)
 print('X_test shape:', X_test.shape)
 
 print('Build model...')
+start_time = time.time()
 model = Sequential()
 model.add(Embedding(max_features, 128, input_length=maxlen, dropout=0.2))
 model.add(LSTM(128, dropout_W=0.2, dropout_U=0.2))  # try using a GRU instead, for fun
@@ -52,7 +63,9 @@ model.compile(loss='binary_crossentropy',
               optimizer='adam',
               metrics=['accuracy'])
 
+print('compilation takes {}'.format(str(time.time()-start_time)))
 print('Train...')
+
 print(X_train.shape)
 print(y_train.shape)
 model.fit(X_train, y_train, batch_size=batch_size, nb_epoch=15,

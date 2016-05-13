@@ -9,6 +9,18 @@ from __future__ import print_function
 import numpy as np
 np.random.seed(1337)  # for reproducibility
 
+import os
+import sys
+ 
+os.environ['THEANO_FLAGS']='device=gpu2'
+os.environ['KERAS_BACKEND'] = 'tensorflow'
+CopyRoot  = os.path.join('..','..','..')
+kerasversion = 'keras-1'
+sys.path.insert(0, os.path.join(CopyRoot, 'Code', kerasversion))
+sys.path.insert(0, os.path.join(CopyRoot, 'Code', kerasversion,'keras'))
+sys.path.insert(0, os.path.join(CopyRoot, 'Code', kerasversion,'keras','layers'))
+sys.path.insert(0,'..')
+
 from keras.datasets import mnist
 from keras.models import Sequential
 from keras.layers.core import Dense, Dropout, Activation, Flatten
