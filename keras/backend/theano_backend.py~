@@ -21,6 +21,7 @@ def learning_phase():
     # False = test, True = train
     return _LEARNING_PHASE
 
+
 # VARIABLE MANIPULATION
 
 def variable(value, dtype=_FLOATX, name=None):
