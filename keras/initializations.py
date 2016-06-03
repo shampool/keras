@@ -3,7 +3,7 @@ import numpy as np
 from . import backend as K
 
 
-def get_fans(shape, dim_ordering='th'):
+def get_fans(shape, dim_ordering='th',**kwargs):
     if len(shape) == 2:
         fan_in = shape[0]
         fan_out = shape[1]
@@ -12,11 +12,13 @@ def get_fans(shape, dim_ordering='th'):
         # TH kernel shape: (depth, input_depth, ...)
         # TF kernel shape: (..., input_depth, depth)
         if dim_ordering == 'th':
-            fan_in = np.prod(shape[1:])
-            fan_out = shape[0]
+            receptive_field_size = np.prod(shape[2:])
+            fan_in = shape[1] * receptive_field_size
+            fan_out = shape[0] * receptive_field_size
         elif dim_ordering == 'tf':
-            fan_in = np.prod(shape[:-1])
-            fan_out = shape[-1]
+            receptive_field_size = np.prod(shape[:2])
+            fan_in = shape[-2] * receptive_field_size
+            fan_out = shape[-1] * receptive_field_size
         else:
             raise Exception('Invalid dim_ordering: ' + dim_ordering)
     else:
@@ -26,17 +28,17 @@ def get_fans(shape, dim_ordering='th'):
     return fan_in, fan_out
 
 
-def uniform(shape, scale=0.05, name=None):
+def uniform(shape, scale=0.05, name=None,**kwargs):
     return K.variable(np.random.uniform(low=-scale, high=scale, size=shape),
                       name=name)
 
 
-def normal(shape, scale=0.05, name=None):
+def normal(shape, scale=0.05, name=None,**kwargs):
     return K.variable(np.random.normal(loc=0.0, scale=scale, size=shape),
                       name=name)
 
 
-def lecun_uniform(shape, name=None, dim_ordering='th'):
+def lecun_uniform(shape, name=None, dim_ordering='th',**kwargs):
     ''' Reference: LeCun 98, Efficient Backprop
         http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf
     '''
@@ -45,7 +47,7 @@ def lecun_uniform(shape, name=None, dim_ordering='th'):
     return uniform(shape, scale, name=name)
 
 
-def glorot_normal(shape, name=None, dim_ordering='th'):
+def glorot_normal(shape, name=None, dim_ordering='th',**kwargs):
     ''' Reference: Glorot & Bengio, AISTATS 2010
     '''
     fan_in, fan_out = get_fans(shape, dim_ordering=dim_ordering)
@@ -53,13 +55,13 @@ def glorot_normal(shape, name=None, dim_ordering='th'):
     return normal(shape, s, name=name)
 
 
-def glorot_uniform(shape, name=None, dim_ordering='th'):
+def glorot_uniform(shape, name=None, dim_ordering='th',**kwargs):
     fan_in, fan_out = get_fans(shape, dim_ordering=dim_ordering)
     s = np.sqrt(6. / (fan_in + fan_out))
     return uniform(shape, s, name=name)
 
 
-def he_normal(shape, name=None, dim_ordering='th'):
+def he_normal(shape, name=None, dim_ordering='th',**kwargs):
     ''' Reference:  He et al., http://arxiv.org/abs/1502.01852
     '''
     fan_in, fan_out = get_fans(shape, dim_ordering=dim_ordering)
@@ -67,13 +69,13 @@ def he_normal(shape, name=None, dim_ordering='th'):
     return normal(shape, s, name=name)
 
 
-def he_uniform(shape, name=None, dim_ordering='th'):
+def he_uniform(shape, name=None, dim_ordering='th',**kwargs):
     fan_in, fan_out = get_fans(shape, dim_ordering=dim_ordering)
     s = np.sqrt(6. / fan_in)
     return uniform(shape, s, name=name)
 
 
-def orthogonal(shape, scale=1.1, name=None):
+def orthogonal(shape, scale=1., name=None, **kwargs):
     ''' From Lasagne. Reference: Saxe et al., http://arxiv.org/abs/1312.6120
     '''
     flat_shape = (shape[0], np.prod(shape[1:]))
@@ -85,7 +87,7 @@ def orthogonal(shape, scale=1.1, name=None):
     return K.variable(scale * q[:shape[0], :shape[1]], name=name)
 
 
-def identity(shape, scale=1, name=None):
+def identity(shape, scale=1, name=None,**kwargs):
     if len(shape) != 2 or shape[0] != shape[1]:
         raise Exception('Identity matrix initialization can only be used '
                         'for 2D square matrices.')
@@ -93,11 +95,11 @@ def identity(shape, scale=1, name=None):
         return K.variable(scale * np.identity(shape[0]), name=name)
 
 
-def zero(shape, name=None):
+def zero(shape, name=None,**kwargs):
     return K.zeros(shape, name=name)
 
 
-def one(shape, name=None):
+def one(shape, name=None,**kwargs):
     return K.ones(shape, name=name)
 
 

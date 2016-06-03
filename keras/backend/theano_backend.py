@@ -15,6 +15,7 @@ from .common import _FLOATX, _EPSILON
 # INTERNAL UTILS
 theano.config.floatX = _FLOATX
 _LEARNING_PHASE = T.scalar(dtype='uint8', name='keras_learning_phase')  # 0 = test, 1 = train
+Variable = theano.Variable  #denote the tensor variable type
 
 
 def learning_phase():
@@ -56,6 +57,12 @@ def shape(x):
     '''
     return x.shape
 
+# def int_shape(x):
+#     '''Returns the shape of a tensor as a tuple of
+#     integers or None entries.
+#     '''
+#     shape = x.get_shape()
+#     return tuple([i.__int__() for i in shape])
 
 def ndim(x):
     return x.ndim
@@ -1021,7 +1028,116 @@ def pool3d(x, pool_size, strides=(1, 1, 1), border_mode='valid',
         pool_out = pool_out.dimshuffle((0, 2, 3, 4, 1))
     return pool_out
 
+# Padding
+def spatial_2d_cropping_4specify(x, cropping=(1, 1, 1, 1), dim_ordering='th'):
+    '''croping the 2nd and 3rd dimensions of a 4D tensor
+     cropping[0], and cropping[1] are for left part for row and cols
+     cropping[2]  and cropping[3] are for right part for row and col
+    '''
+    input_shape = list(x.shape)
+    cropping = list(cropping)
+    if dim_ordering == 'th':
+        #input_shape[2] = theano.printing.Print("this is input_shape[2]: " )(input_shape[2])
+        #cropping[0] = theano.printing.Print("this is cropping[0]: " )(cropping[0])
+        #cropping[2] = theano.printing.Print("this is cropping[2]: " )(cropping[2])
 
+        output_shape = [input_shape[0],
+                        input_shape[1],
+                        input_shape[2] -     cropping[0] -  cropping[2],
+                        input_shape[3] -     cropping[1] -  cropping[3]]
+
+        output = T.zeros(output_shape)
+        indices = (slice(None),
+                   slice(None),
+                   slice(cropping[0], output_shape[2] + cropping[0]),
+                   slice(cropping[1], output_shape[3] + cropping[1]))
+
+    elif dim_ordering == 'tf':
+        output_shape = (input_shape[0],
+                        input_shape[1]  -     cropping[0] -  cropping[2],
+                        input_shape[2]  -     cropping[1] -  cropping[3],
+                        input_shape[3])
+        output = T.zeros(output_shape)
+        indices = (slice(None),
+                   slice(cropping[0], output_shape[1] + cropping[0]),
+                   slice(cropping[1], output_shape[2] + cropping[1]),
+                   slice(None))
+    else:
+        raise Exception('Invalid dim_ordering: ' + dim_ordering)
+    return T.set_subtensor(output[0::,0::,0::,0::], x[indices])
+
+
+def spatial_2d_padding_4specify(x, padding=(1, 1,1,1), dim_ordering='th'):
+    '''Pad the 2nd and 3rd dimensions of a 4D tensor
+    with "padding[0]" and "padding[1]" (resp.) zeros left and right.
+    padding[0], and padding[1] are for left part for row and cols
+    padding[2]  and padding[3] are for right part for row and col
+    '''
+    input_shape = x.shape
+    if dim_ordering == 'th':
+        output_shape = (input_shape[0],
+                        input_shape[1],
+                        input_shape[2] +     padding[0] + padding[2],
+                        input_shape[3] +     padding[1] + padding[3])
+        output = T.zeros(output_shape)
+        indices = (slice(None),
+                   slice(None),
+                   slice(padding[0], input_shape[2] + padding[0]),
+                   slice(padding[1], input_shape[3] + padding[1]))
+
+    elif dim_ordering == 'tf':
+        output_shape = (input_shape[0],
+                        input_shape[1] + padding[0] + padding[2],
+                        input_shape[2] + padding[1] + padding[3],
+                        input_shape[3])
+        output = T.zeros(output_shape)
+        indices = (slice(None),
+                   slice(padding[0], input_shape[1] + padding[0]),
+                   slice(padding[1], input_shape[2] + padding[1]),
+                   slice(None))
+    else:
+        raise Exception('Invalid dim_ordering: ' + dim_ordering)
+
+    #rex =   theano.printing.Print("T subtensoor")(T.set_subtensor(output[indices], x))
+    return T.set_subtensor(output[indices], x)
+
+def spatial_3d_padding_6specify(x, padding=(1, 1,1,1,1,1), dim_ordering='th'):
+    '''Pad the 2nd and 3rd dimensions of a 4D tensor
+    with "padding[0]" and "padding[1]" (resp.) zeros left and right.
+    padding[0], and padding[1] are for left part for row and cols
+    padding[2]  and padding[3] are for right part for row and col
+    '''
+    input_shape = x.shape
+    if dim_ordering == 'th':
+        output_shape = (input_shape[0],
+                        input_shape[1],
+                        input_shape[2] +     padding[0] + padding[3],
+                        input_shape[3] +     padding[1] + padding[4],
+                        input_shape[4] +     padding[2] + padding[5],
+                        )
+        output = T.zeros(output_shape)
+        indices = (slice(None),
+                   slice(None),
+                   slice(padding[0], input_shape[2] + padding[0]),
+                   slice(padding[1], input_shape[3] + padding[1]),
+                   slice(padding[2], input_shape[4] + padding[2]))
+
+    elif dim_ordering == 'tf':
+        output_shape = (input_shape[0],
+                        input_shape[1] + padding[0] + padding[3],
+                        input_shape[2] + padding[1] + padding[4],
+                        input_shape[3] + padding[2] + padding[5],
+                        input_shape[4])
+        output = T.zeros(output_shape)
+        indices = (slice(None),
+                   slice(padding[0], input_shape[1] + padding[0]),
+                   slice(padding[1], input_shape[2] + padding[1]),
+                   slice(padding[2], input_shape[3] + padding[2]),
+                   slice(None))
+    else:
+        raise Exception('Invalid dim_ordering: ' + dim_ordering)
+    #rex =   theano.printing.Print("T subtensoor")(T.set_subtensor(output[indices], x))
+    return T.set_subtensor(output[indices], x)
 # RANDOMNESS
 
 

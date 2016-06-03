@@ -16,14 +16,12 @@ class Graph(Model):
     For multi-inputs/multi-outputs models, or
     models using shared layers, use the functional API instead.
     '''
-
     def __init__(self, name=None):
         # model attributes
         self.inbound_nodes = []
         self.outbound_nodes = []
         self.built = False
         self.supports_masking = False
-
         # legacy attributes (we prefix them with _graph_)
         self._graph_namespace = set()  # strings
         self._graph_nodes = OrderedDict()  # layer-like
@@ -33,7 +31,6 @@ class Graph(Model):
         self._graph_output_config = []  # dicts
         self._graph_node_config = []  # dicts
         self._graph_shared_nodes_names = []
-
         if not name:
             prefix = 'graph_'
             name = prefix + str(K.get_uid(prefix))

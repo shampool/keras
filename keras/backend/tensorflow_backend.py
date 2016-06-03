@@ -9,7 +9,7 @@ from .common import _FLOATX, _EPSILON
 
 _SESSION = None
 _LEARNING_PHASE = tf.placeholder(dtype='uint8', name='keras_learning_phase')  # 0 = test, 1 = train
-
+Variable = tf.Variable  #denote the tensor variable type
 
 def learning_phase():
     '''Returns the learning phase flag.
@@ -499,15 +499,21 @@ def resize_images(X, height_factor, width_factor, dim_ordering):
     positive integers.
     '''
     if dim_ordering == 'th':
+        original_shape = int_shape(X)
         new_shape = tf.shape(X)[2:]
         new_shape *= tf.constant(np.array([height_factor, width_factor]).astype('int32'))
         X = permute_dimensions(X, [0, 2, 3, 1])
         X = tf.image.resize_nearest_neighbor(X, new_shape)
-        return permute_dimensions(X, [0, 3, 1, 2])
+        X = permute_dimensions(X, [0, 3, 1, 2])
+        X.set_shape((None, None, original_shape[2] * height_factor, original_shape[3] * width_factor))
+        return X
     elif dim_ordering == 'tf':
+        original_shape = int_shape(X)
         new_shape = tf.shape(X)[1:3]
         new_shape *= tf.constant(np.array([height_factor, width_factor]).astype('int32'))
-        return tf.image.resize_nearest_neighbor(X, new_shape)
+        X = tf.image.resize_nearest_neighbor(X, new_shape)
+        X.set_shape((None, original_shape[1] * height_factor, original_shape[2] * width_factor, None))
+        return X
     else:
         raise Exception('Invalid dim_ordering: ' + dim_ordering)
 
@@ -539,6 +545,8 @@ def repeat(x, n):
 
 
 def tile(x, n):
+    if not hasattr(n, 'shape') and not hasattr(n, '__len__'):
+        n = [n]
     return tf.tile(x, n)
 
 
@@ -1068,6 +1076,54 @@ def pool2d(x, pool_size, strides=(1, 1),
         x = tf.cast(x, 'float64')
     return x
 
+# Padding
+def spatial_2d_cropping_4specify(x, cropping=(1, 1, 1, 1), dim_ordering='th'):
+    '''Pad the 2nd and 3rd dimensions of a 4D tensor
+     cropping[0], and cropping[1] are for left part for row and cols
+     cropping[2]  and cropping[3] are for right part for row and col
+    '''
+    input_shape = x.shape
+    if dim_ordering == 'th':
+        output_shape = (input_shape[0],
+                        input_shape[1],
+                        input_shape[2] -     cropping[0] -  cropping[2],
+                        input_shape[3] -     cropping[1] -  cropping[3])
+
+        #output = T.zeros(output_shape)
+        indices = (slice(None),
+                   slice(None),
+                   slice(cropping[0], input_shape[2] + cropping[0]),
+                   slice(cropping[1], input_shape[3] + cropping[1]))
+
+    elif dim_ordering == 'tf':
+        output_shape = (input_shape[0],
+                        input_shape[1]  -     cropping[0] -  cropping[2],
+                        input_shape[2]  -     cropping[1] -  cropping[3],
+                        input_shape[3])
+        #output = T.zeros(output_shape)
+        indices = (slice(None),
+                   slice(cropping[0], input_shape[1] + cropping[0]),
+                   slice(cropping[1], input_shape[2] + cropping[1]),
+                   slice(None))
+    else:
+        raise Exception('Invalid dim_ordering: ' + dim_ordering)
+    return x[indices]
+
+def spatial_2d_padding_4specify(x, padding=(1, 1,1,1), dim_ordering='th'):
+    '''Pad the 2nd and 3rd dimensions of a 4D tensor
+    with "padding[0]" and "padding[1]" (resp.) zeros left and right.
+    padding[0], and padding[1] are for left part for row and cols
+    padding[2]  and padding[3] are for right part for row and col
+    '''
+
+    if dim_ordering == 'th':
+        pattern = [[0, 0], [0, 0],
+                   [padding[0], padding[2]], [padding[1], padding[3]]]
+    else:
+        pattern = [[0, 0],
+                   [padding[0], padding[2]], [padding[1], padding[3]],
+                   [0, 0]]
+    return tf.pad(x, pattern)
 
 # RANDOMNESS
 

@@ -194,7 +194,6 @@ class Convolution2D(Layer):
     provide the keyword argument `input_shape`
     (tuple of integers, does not include the sample axis),
     e.g. `input_shape=(3, 128, 128)` for 128x128 RGB pictures.
-
     # Examples
 
     ```python
@@ -267,7 +266,6 @@ class Convolution2D(Layer):
         self.nb_col = nb_col
         self.init = initializations.get(init, dim_ordering=dim_ordering)
         self.activation = activations.get(activation)
-        assert border_mode in {'valid', 'same'}, 'border_mode must be in {valid, same}'
         self.border_mode = border_mode
         self.subsample = tuple(subsample)
         assert dim_ordering in {'tf', 'th'}, 'dim_ordering must be in {tf, th}'
@@ -294,7 +292,8 @@ class Convolution2D(Layer):
             self.W_shape = (self.nb_row, self.nb_col, stack_size, self.nb_filter)
         else:
             raise Exception('Invalid dim_ordering: ' + self.dim_ordering)
-        self.W = self.init(self.W_shape, name='{}_W'.format(self.name))
+        self.W = self.init(self.W_shape, name='{}_W'.format(self.name), dim_ordering = self.dim_ordering)
+
         if self.bias:
             self.b = K.zeros((self.nb_filter,), name='{}_b'.format(self.name))
             self.trainable_weights = [self.W, self.b]
@@ -325,6 +324,7 @@ class Convolution2D(Layer):
             del self.initial_weights
 
     def get_output_shape_for(self, input_shape):
+        #input_shape = K.shape(self.get_input(train=True))
         if self.dim_ordering == 'th':
             rows = input_shape[2]
             cols = input_shape[3]
@@ -1028,12 +1028,12 @@ class UpSampling2D(Layer):
         if self.dim_ordering == 'th':
             return (input_shape[0],
                     input_shape[1],
-                    self.size[0] * input_shape[2],
-                    self.size[1] * input_shape[3])
+                    self.size[0] * input_shape[2] if  input_shape[2] else None,
+                    self.size[1] * input_shape[3] if  input_shape[3] else None)
         elif self.dim_ordering == 'tf':
             return (input_shape[0],
-                    self.size[0] * input_shape[1],
-                    self.size[1] * input_shape[2],
+                    self.size[0] * input_shape[1] if  input_shape[1] else None,
+                    self.size[1] * input_shape[2] if  input_shape[2] else None,
                     input_shape[3])
         else:
             raise Exception('Invalid dim_ordering: ' + self.dim_ordering)
@@ -1076,7 +1076,7 @@ class UpSampling3D(Layer):
     def __init__(self, size=(2, 2, 2), dim_ordering='th', **kwargs):
         if K._BACKEND != 'theano':
             raise Exception(self.__class__.__name__ +
-                            ' is currently only working with Theano backend.') 
+                            ' is currently only working with Theano backend.')
         self.size = tuple(size)
         assert dim_ordering in {'tf', 'th'}, 'dim_ordering must be in {tf, th}'
         self.dim_ordering = dim_ordering
@@ -1254,4 +1254,166 @@ class ZeroPadding3D(Layer):
     def get_config(self):
         config = {'padding': self.padding}
         base_config = super(ZeroPadding3D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+class Resize2D(Layer):
+    '''cropping layer for fully convolutional layer for 2D image(e.g. picture).
+    # Input shape
+        4D tensor with shape:
+        (samples, depth, first_axis_to_pad, second_axis_to_pad)
+    # Output shape
+        4D tensor with shape:
+        (samples, depth, first_padded_axis, second_padded_axis)
+    # Arguments
+        padding: tuple of int (length 2)
+            How many zeros to add at the beginning and end of
+            the 2 padding dimensions (axis 3 and 4).
+    '''
+
+
+    def __init__(self, destin_shape = None, dim_ordering='th', input_ndim=4, **kwargs):
+        super(Resize2D, self).__init__(**kwargs)
+
+        assert dim_ordering in {'tf', 'th'}, 'dim_ordering must be in {tf, th}'
+        self.dim_ordering = dim_ordering
+        #self.layerbefore = tuple(layerbefore) # -1 means the previous layer
+        assert destin_shape is not None, 'Please specify the destination shape'
+        self.destin_shape = destin_shape
+        self.input_spec = [InputSpec(ndim=input_ndim)]
+
+    def get_output_shape_for(self, input_shape):
+        #for i in range(-self.layerbefore):
+        #    tmp = tmp.previous
+        tmp_output_shape = self.destin_shape
+        if self.dim_ordering == 'th':
+            destsize = tmp_output_shape[2:4]
+        elif self.dim_ordering == 'tf':
+            destsize = tmp_output_shape[1:3]
+        width =  destsize[0]
+        height = destsize[1]
+        if self.dim_ordering == 'th':
+            return (input_shape[0],
+                    input_shape[1],
+                    width,
+                    height)
+        elif self.dim_ordering == 'tf':
+            return (input_shape[0],
+                    width,
+                    height,
+                    input_shape[3])
+        else:
+            raise Exception('Invalid dim_ordering: ' + self.dim_ordering)
+
+    def call(self, X,  mask=None):
+        input_shape =  list(K.shape(X))
+        tmp_output_shape = list(self.destin_shape)
+        if self.dim_ordering == 'th':
+            destsize = tmp_output_shape[2:4]
+        elif self.dim_ordering == 'tf':
+            destsize = tmp_output_shape[1:3]
+
+        if self.dim_ordering == 'th':
+            destsize = list(destsize)
+            row_residual = (destsize[0] - input_shape[2])
+            col_residual = (destsize[1] - input_shape[3])
+
+        elif self.dim_ordering == 'tf':
+            row_residual = (destsize[0] - input_shape[1])
+            col_residual = (destsize[1] - input_shape[2])
+        padding = [row_residual//2,col_residual//2,  row_residual - row_residual//2,  col_residual - col_residual//2]
+        cropping = [(-row_residual)//2, (-col_residual)//2,  -(row_residual + (-row_residual)//2),  -(col_residual + (-col_residual)//2)]
+        #result = K.ifelse(K.gt(row_residual, 0), K.spatial_2d_padding_4specify(X, padding = padding), K.spatial_2d_cropping_4specify(X, cropping = cropping))
+        result = K.spatial_2d_padding_4specify(X, padding = padding)
+        #result = theano.printing.Print('Finish calculating resize')(result + 1)
+        return result
+
+    def get_config(self):
+        config = {'name': self.__class__.__name__,
+                  }
+        base_config = super(Resize2D, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
+
+class Resize3D(Layer):
+    '''cropping layer for fully convolutional layer for 2D image(e.g. picture).
+    # Input shape
+        4D tensor with shape:
+        (samples, depth, first_axis_to_pad, second_axis_to_pad)
+    # Output shape
+        4D tensor with shape:
+        (samples, depth, first_padded_axis, second_padded_axis)
+    # Arguments
+        padding: tuple of int (length 2)
+            How many zeros to add at the beginning and end of
+            the 2 padding dimensions (axis 3 and 4).
+    '''
+    input_ndim = 5
+
+    def __init__(self, destin_shape = None, dim_ordering='th',  **kwargs):
+        super(Resize2D, self).__init__(**kwargs)
+
+        assert dim_ordering in {'tf', 'th'}, 'dim_ordering must be in {tf, th}'
+        self.dim_ordering = dim_ordering
+        #self.layerbefore = tuple(layerbefore) # -1 means the previous layer
+        assert destin_shape is not None, 'Please specify the destination shape'
+        self.destin_shape = destin_shape
+        self.input_spec = [InputSpec(ndim=input_ndim)]
+
+
+    def get_output_shape_for(self, input_shape):
+        #for i in range(-self.layerbefore):
+        #    tmp = tmp.previous
+        tmp_output_shape = self.destin_shape
+        if self.dim_ordering == 'th':
+            destsize = tmp_output_shape[2:5]
+        elif self.dim_ordering == 'tf':
+            destsize = tmp_output_shape[1:4]
+        width  =  destsize[0]
+        height =  destsize[1]
+        depth  =  destsize[2]
+        if self.dim_ordering == 'th':
+            return (input_shape[0],
+                    input_shape[1],
+                    width,
+                    height,
+                    depth
+                    )
+        elif self.dim_ordering == 'tf':
+            return (input_shape[0],
+                    width,
+                    height,
+                    depth,
+                    input_shape[3])
+        else:
+            raise Exception('Invalid dim_ordering: ' + self.dim_ordering)
+
+    def call(self, X,  mask=None):
+        input_shape =  list(K.shape(X))
+        tmp_output_shape = list(self.destin_shape)
+        if self.dim_ordering == 'th':
+            destsize = tmp_output_shape[2:4]
+        elif self.dim_ordering == 'tf':
+            destsize = tmp_output_shape[1:3]
+
+        if self.dim_ordering == 'th':
+            destsize = list(destsize)
+            row_residual = (destsize[0] - input_shape[2])
+            col_residual = (destsize[1] - input_shape[3])
+            dep_residual = (destsize[2] - input_shape[4])
+
+        elif self.dim_ordering == 'tf':
+            row_residual = (destsize[0] - input_shape[1])
+            col_residual = (destsize[1] - input_shape[2])
+            dep_residual = (destsize[2] - input_shape[3])
+
+        padding = [row_residual//2,col_residual//2, dep_residual//2, row_residual - row_residual//2,  col_residual - col_residual//2, dep_residual - dep_residual//2]
+        cropping = [(-row_residual)//2, (-col_residual)//2, (-dep_residual)//2, -(row_residual + (-row_residual)//2),  -(col_residual + (-col_residual)//2), -(dep_residual + (-dep_residual)//2)]
+        #result = K.ifelse(K.gt(row_residual, 0), K.spatial_2d_padding_4specify(X, padding = padding), K.spatial_2d_cropping_4specify(X, cropping = cropping))
+        result = K.spatial_3d_padding_6specify(X, padding = padding)
+        #result = theano.printing.Print('Finish calculating resize')(result + 1)
+        return result
+
+    def get_config(self):
+        config = {'name': self.__class__.__name__,
+                  }
+        base_config = super(Resize2D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))

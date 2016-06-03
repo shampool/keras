@@ -28,10 +28,19 @@ sys.path.insert(0,'..')
 # sys.path.insert(0, os.path.join(CopyRoot, 'Code', kerasversion,'keras','layers'))
 # sys.path.insert(0,'..')
 
+# import os
+# import sys
+# CopyRoot  = os.path.join('..','..','..')
+# kerasversion = 'keras-1'
+# sys.path.insert(0, os.path.join(CopyRoot, 'Code', kerasversion))
+# sys.path.insert(0, os.path.join(CopyRoot, 'Code', kerasversion,'keras'))
+# sys.path.insert(0, os.path.join(CopyRoot, 'Code', kerasversion,'keras','layers'))
+# sys.path.insert(0,'..')
+
 from keras.datasets import mnist
 from keras.models import Sequential
-from keras.layers.core import Dense, Dropout, Activation, Flatten
-from keras.layers.convolutional import Convolution2D, MaxPooling2D
+from keras.layers import Dense, Dropout, Activation, Flatten
+from keras.layers import Convolution2D, MaxPooling2D
 from keras.utils import np_utils
 
 batch_size = 128

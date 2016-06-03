@@ -84,9 +84,6 @@ def standardize_input_data(data, names, shapes=None, check_batch_dim=True,
     # check shapes compatibility
     if shapes:
         for i in range(len(names)):
-            if not i and not check_batch_dim:
-                # skip the first axis
-                continue
             array = arrays[i]
             if len(array.shape) != len(shapes[i]):
                 raise Exception('Error when checking ' + exception_prefix +
@@ -94,9 +91,12 @@ def standardize_input_data(data, names, shapes=None, check_batch_dim=True,
                                 ' to have ' + str(len(shapes[i])) +
                                 ' dimensions, but got array with shape ' +
                                 str(array.shape))
-            for dim, ref_dim in zip(array.shape, shapes[i]):
+            for j, (dim, ref_dim) in enumerate(zip(array.shape, shapes[i])):
+                if not j and not check_batch_dim:
+                    # skip the first axis
+                    continue
                 if ref_dim:
-                    if ref_dim != dim:
+                    if type(ref_dim) == type(dim) and ref_dim != dim:
                         raise Exception('Error when checking ' + exception_prefix +
                                         ': expected ' + names[i] +
                                         ' to have shape ' + str(shapes[i]) +
@@ -452,6 +452,7 @@ class Model(Container):
         self.optimizer = optimizers.get(optimizer)
         self.sample_weight_mode = sample_weight_mode
         self.loss = loss
+        self.loss_weights = loss_weights
 
         # prepare loss weights
         if loss_weights is None:
