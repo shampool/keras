@@ -95,7 +95,7 @@ def standardize_input_data(data, names, shapes=None, check_batch_dim=True,
                 if not j and not check_batch_dim:
                     # skip the first axis
                     continue
-                if ref_dim:
+                if ref_dim and 0: # do not check the shape, it's a limit and not that useful
                     if type(ref_dim) == type(dim) and ref_dim != dim:
                         raise Exception('Error when checking ' + exception_prefix +
                                         ': expected ' + names[i] +
@@ -669,7 +669,8 @@ class Model(Container):
                                              [self.total_loss] + self.metrics,
                                              updates=updates,
                                              **self._function_kwargs)
-
+            print('Finished making training function.')
+            
     def _make_test_function(self):
         if not hasattr(self, 'test_function'):
             raise Exception('You must compile your model before using it.')
@@ -684,7 +685,7 @@ class Model(Container):
                                             [self.total_loss] + self.metrics,
                                             updates=self.state_updates,
                                             **self._function_kwargs)
-
+            print('Finished making testing function.')
     def _make_predict_function(self):
         if not hasattr(self, 'predict_function'):
             self.predict_function = None
@@ -700,7 +701,7 @@ class Model(Container):
                                                self.outputs,
                                                updates=self.state_updates,
                                                **kwargs)
-
+            print('Finished making prediction function.')
     def _fit_loop(self, f, ins, out_labels=[], batch_size=32,
                   nb_epoch=100, verbose=1, callbacks=[],
                   val_f=None, val_ins=None, shuffle=True,

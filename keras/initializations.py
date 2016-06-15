@@ -74,6 +74,14 @@ def he_uniform(shape, name=None, dim_ordering='th',**kwargs):
     s = np.sqrt(6. / fan_in)
     return uniform(shape, s, name=name)
 
+def get_orthogonal(shape, scale=1.):
+    # get the orthogonal matrix for two dim shape
+    a = np.random.normal(0.0, 1.0, shape)
+    u, _, v = np.linalg.svd(a, full_matrices=False)
+    q = u if u.shape == shape else v
+    q = q.reshape(shape)
+    return scale*q
+
 
 def orthogonal(shape, scale=1., name=None, **kwargs):
     ''' From Lasagne. Reference: Saxe et al., http://arxiv.org/abs/1312.6120
@@ -87,7 +95,8 @@ def orthogonal(shape, scale=1., name=None, **kwargs):
     return K.variable(scale * q[:shape[0], :shape[1]], name=name)
 
 
-def identity(shape, scale=1, name=None,**kwargs):
+
+def identity(shape, scale=1, dim_ordering='tf',name=None,**kwargs):
     if len(shape) != 2 or shape[0] != shape[1]:
         raise Exception('Identity matrix initialization can only be used '
                         'for 2D square matrices.')
@@ -101,6 +110,57 @@ def zero(shape, name=None,**kwargs):
 
 def one(shape, name=None,**kwargs):
     return K.ones(shape, name=name)
+
+from fractions import gcd
+# TH kernel shape: (depth, input_depth, ...)
+# TF kernel shape: (..., input_depth, depth)
+def conv_init(shape, scale=1, dim_ordering='th',mode ='orthogonal', **kwargs):
+    if dim_ordering == 'th':
+        fout, fin, row, col = shape
+    elif dim_ordering == 'tf':
+        row,  col, fin, fout = shape
+    print row,  col, fin, fout
+    if fin == fout:
+       real_data = np.zeros(shape)
+    else:
+       real_data = np.random.normal(0.0, 1.0, shape)    
+    if dim_ordering == 'tf':
+        real_data = np.transpose(real_data, (3,2,0,1))
+        
+    piv_r, piv_c = row//2, col//2
+    if fin == fout:
+       if mode == 'identity':
+          real_data[:,:,piv_r, piv_c] = np.identity(fin)
+       elif mode == 'orthogonal':
+          a = np.random.normal(0.0, 1.0, (fin, fout))  
+          u, _, v = np.linalg.svd(a, full_matrices=False)
+          real_data[:,:,piv_r, piv_c] = u
+       
+    else:
+       c= gcd(fin, fout)
+       for a in range(fin):
+            for b in range(fout):
+                if (a*c)//fin == (b*c)//fout:
+                    real_data[:,:,piv_r, piv_c] = float(c)/fout
+      
+    if dim_ordering == 'tf':
+        res = np.transpose(real_data, (2,3,1,0))
+    else:
+        res = real_data
+    return res
+
+
+def conv_identity(shape, dim_ordering='th', name=None, **kwargs):
+    if len(shape) != 4:
+       raise Exception("filter dimension not equal 4 is not supported yet!")
+    this_data = conv_init(shape, dim_ordering=dim_ordering,mode ='identity')
+    return K.variable(this_data, name=name)
+
+def conv_orthogonal(shape,dim_ordering='th', name=None, **kwargs):
+    if len(shape) != 4:
+       raise Exception("filter dimension not equal 4 is not supported yet!")
+    this_data = conv_init(shape, dim_ordering=dim_ordering,mode ='orthogonal')
+    return K.variable(this_data, name=name)
 
 
 from .utils.generic_utils import get_from_module

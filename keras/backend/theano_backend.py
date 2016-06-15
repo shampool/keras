@@ -16,6 +16,7 @@ from .common import _FLOATX, _EPSILON
 theano.config.floatX = _FLOATX
 _LEARNING_PHASE = T.scalar(dtype='uint8', name='keras_learning_phase')  # 0 = test, 1 = train
 Variable = theano.Variable  #denote the tensor variable type
+FLOATX = _FLOATX
 
 def learning_phase():
     # False = test, True = train
@@ -803,12 +804,14 @@ def l2_normalize(x, axis):
 # CONVOLUTIONS
 
 def conv2d(x, kernel, strides=(1, 1), border_mode='valid', dim_ordering='th',
-           image_shape=None, filter_shape=None):
+           image_shape=None, filter_shape=None,dilated = 0, rate = 1,**kwargs):
     '''
     border_mode: string, "same" or "valid".
     '''
     if dim_ordering not in {'th', 'tf'}:
         raise Exception('Unknown dim_ordering ' + str(dim_ordering))
+    if dilated == 0:
+        rate = [rate, rate]
 
     if dim_ordering == 'tf':
         # TF uses the last dimension as channel dimension,
@@ -849,9 +852,10 @@ def conv2d(x, kernel, strides=(1, 1), border_mode='valid', dim_ordering='th',
 
     conv_out = T.nnet.conv2d(x, kernel,
                              border_mode=th_border_mode,
-                             subsample=strides,
+                             subsample=strides, filters_dilations = rate,
                              input_shape=image_shape,
                              filter_shape=filter_shape)
+
 
     if border_mode == 'same':
         if np_kernel.shape[2] % 2 == 0:
@@ -866,7 +870,7 @@ def conv2d(x, kernel, strides=(1, 1), border_mode='valid', dim_ordering='th',
 
 def conv3d(x, kernel, strides=(1, 1, 1),
            border_mode='valid', dim_ordering='th',
-           volume_shape=None, filter_shape=None):
+           volume_shape=None, filter_shape=None,**kwargs):
     '''
     Run on cuDNN if available.
     border_mode: string, "same" or "valid".
@@ -1136,9 +1140,41 @@ def spatial_3d_padding_6specify(x, padding=(1, 1,1,1,1,1), dim_ordering='th'):
         raise Exception('Invalid dim_ordering: ' + dim_ordering)
     #rex =   theano.printing.Print("T subtensoor")(T.set_subtensor(output[indices], x))
     return T.set_subtensor(output[indices], x)
-# RANDOMNESS
+        
 
+        # RANDOMNESS
+        # TF uses the last dimension as channel dimension,
+        # instead of the 2nd one.
+        # TH input shape: (samples, input_depth, rows, cols)
+        # TF input shape: (samples, rows, cols, input_depth)
+        # TH kernel shape: (depth, input_depth, rows, cols)
+        # TF kernel shape: (rows, cols, input_depth, depth)
+        
 
+def lrn(x, alpha = 1e-4, k = 2, beta=0.75, n =5,dim_ordering = 'th', **kwargs):
+    input_sqr = T.sqr(x)
+    half_n = n // 2
+
+    if dim_ordering == 'tf':
+        x = T.tranpose(x, (0,3,1,2))
+    input_shape = x.shape
+    b, ch, r, c = input_shape
+    extra_channels = T.alloc(0., b, ch + 2*half_n, r, c)
+    input_sqr = T.set_subtensor(extra_channels[:, half_n:half_n+ch, :, :],
+                                input_sqr)
+    scale = k
+    for i in range(n):
+        scale += alpha * input_sqr[:,i:i+ch,:,:]
+    scale = scale ** beta
+    res= x / scale
+
+    if dim_ordering == 'th':
+        return res
+    elif dim_ordering == 'tf':
+        res = T.tranpose(res, (0,2,3,1))
+        return res
+    else:
+        raise Exception('Unknown dim_ordering: ' + str(dim_ordering))
 def random_normal(shape, mean=0.0, std=1.0, dtype=_FLOATX, seed=None):
     if seed is None:
         seed = np.random.randint(1, 10e6)

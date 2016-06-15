@@ -3,6 +3,22 @@ from .. import initializations
 from .. import backend as K
 
 
+class LocalResponseNorm(Layer):
+    '''local response normalization layer'''
+    def __init__(self, alpha = 1e-4, k = 2, beta=0.75, n =5, **kwargs):
+        self.alpha = alpha
+        self.k = k
+        self.beta = beta
+        self.n = n
+        assert n%2 != 0, 'LRN only works with odd n'
+        super(LocalResponseNorm,self).__init__(**kwargs)
+    def get_output_shape_for(self, input_shape):
+        return input_shape
+
+    def call(self, x, mask=None):
+        return  K.lrn(x, alpha = self.alpha, k = self.k,
+                      beta = self.beta, n = self.n)
+                      
 class BatchNormalization(Layer):
     '''Normalize the activations of the previous layer at each batch,
     i.e. applies a transformation that maintains the mean activation
@@ -56,7 +72,7 @@ class BatchNormalization(Layer):
         - [Batch Normalization: Accelerating Deep Network Training by Reducing Internal Covariate Shift](http://jmlr.org/proceedings/papers/v37/ioffe15.html)
     '''
     def __init__(self, epsilon=1e-6, mode=0, axis=-1, momentum=0.9,
-                 weights=None, beta_init='zero', gamma_init='one', **kwargs):
+                 weights=None, beta_init='zero', gamma_init='one',dim_ordering='th', **kwargs):
         self.beta_init = initializations.get(beta_init)
         self.gamma_init = initializations.get(gamma_init)
         self.epsilon = epsilon
@@ -64,6 +80,7 @@ class BatchNormalization(Layer):
         self.axis = axis
         self.momentum = momentum
         self.initial_weights = weights
+        self.dim_ordering = dim_ordering
         if self.mode == 0:
             self.uses_learning_phase = True
         super(BatchNormalization, self).__init__(**kwargs)
@@ -71,7 +88,8 @@ class BatchNormalization(Layer):
     def build(self, input_shape):
         self.input_spec = [InputSpec(shape=input_shape)]
         shape = (input_shape[self.axis],)
-
+        
+        self.shape = shape
         self.gamma = self.gamma_init(shape, name='{}_gamma'.format(self.name))
         self.beta = self.beta_init(shape, name='{}_beta'.format(self.name))
         self.trainable_weights = [self.gamma, self.beta]
@@ -144,12 +162,35 @@ class BatchNormalization(Layer):
             std = K.std(x, axis=-1, keepdims=True)
             x_normed = (x - m) / (std + self.epsilon)
             out = self.gamma * x_normed + self.beta
+
+        elif self.mode == 3:  #map-wise normalization
+            assert self.dim_ordering=='th',"mode 3 only works with dim_ordering theano for now!"
+            orishape = K.shape(x)
+            x = K.reshape(x, (K.shape(x)[0], K.shape(x)[1], -1))
+
+            m = K.mean(x, axis= -1, keepdims=True)
+            std = K.std(x, axis= -1, keepdims=True)
+            x_normed = (x - m) / (std + self.epsilon)
+            self.gamma = K.reshape(self.gamma, (1,)+ self.shape + (1,))
+            self.beta = K.reshape(self.beta, (1,)+ self.shape + (1,))
+            out = self.gamma * x_normed + self.beta
+            out = K.reshape(out, orishape)
+        elif self.mode == 4: #channel-wise normalization
+            m = K.mean(x, axis= 1, keepdims=True)
+            std = K.std(x, axis= 1, keepdims=True)
+            x_normed = (x - m) / (std + self.epsilon)
+            #self.gamma = K.reshape(self.gamma, (1,)+ self.shape + (1,1))
+            #self.beta = K.reshape(self.beta, (1,)+ self.shape + (1,1))
+            #out = self.gamma * x_normed + self.beta
+            out = x_normed
         return out
+
 
     def get_config(self):
         config = {"epsilon": self.epsilon,
                   "mode": self.mode,
                   "axis": self.axis,
-                  "momentum": self.momentum}
+                  "momentum": self.momentum,
+                  "dim_ordering":self.dim_ordering}
         base_config = super(BatchNormalization, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))

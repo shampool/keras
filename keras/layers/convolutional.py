@@ -257,7 +257,7 @@ class Convolution2D(Layer):
                  border_mode='valid', subsample=(1, 1), dim_ordering='th',
                  W_regularizer=None, b_regularizer=None, activity_regularizer=None,
                  W_constraint=None, b_constraint=None,
-                 bias=True, **kwargs):
+                 bias=True, dilated = 0, rate = 1,**kwargs):
 
         if border_mode not in {'valid', 'same'}:
             raise Exception('Invalid border mode for Convolution2D:', border_mode)
@@ -281,6 +281,9 @@ class Convolution2D(Layer):
         self.bias = bias
         self.input_spec = [InputSpec(ndim=4)]
         self.initial_weights = weights
+
+        self.dilated = dilated
+        self.rate = rate
         super(Convolution2D, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -348,6 +351,7 @@ class Convolution2D(Layer):
 
     def call(self, x, mask=None):
         output = K.conv2d(x, self.W, strides=self.subsample,
+                          dilated = self.dilated, rate= self.rate,
                           border_mode=self.border_mode,
                           dim_ordering=self.dim_ordering,
                           filter_shape=self.W_shape)
@@ -375,7 +379,9 @@ class Convolution2D(Layer):
                   'activity_regularizer': self.activity_regularizer.get_config() if self.activity_regularizer else None,
                   'W_constraint': self.W_constraint.get_config() if self.W_constraint else None,
                   'b_constraint': self.b_constraint.get_config() if self.b_constraint else None,
-                  'bias': self.bias}
+                  'bias': self.bias,
+                  'dilated':self.dilated,
+                  'rate':self.rate}
         base_config = super(Convolution2D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
@@ -578,7 +584,6 @@ class Convolution3D(Layer):
                   'bias': self.bias}
         base_config = super(Convolution3D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-
 
 class _Pooling1D(Layer):
     '''Abstract class for different pooling 1D layers.

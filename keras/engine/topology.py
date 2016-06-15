@@ -2414,8 +2414,8 @@ class Container(Layer):
             # if obj is a python 'type'
             if type(obj).__name__ == type.__name__:
                 return obj.__name__
-
-            raise TypeError('Not JSON Serializable')
+            
+            #raise TypeError('Not JSON Serializable')
 
         model_config = self._updated_config()
         return json.dumps(model_config, default=get_json_type, **kwargs)
