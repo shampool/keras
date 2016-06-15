@@ -161,7 +161,7 @@ class Reshape(Layer):
         '''Find and replace a single missing dimension in an output shape
         given an input shape.
 
-        A near direct port of the internal numpy function _fix_unknown_dimension
+        A near direct port of the internal Numpy function _fix_unknown_dimension
         in numpy/core/src/multiarray/shape.c
 
         # Arguments
@@ -537,7 +537,7 @@ class Dense(Layer):
             or alternatively, elementwise Theano function.
             If you don't specify anything, no activation is applied
             (ie. "linear" activation: a(x) = x).
-        weights: list of numpy arrays to set as initial weights.
+        weights: list of Numpy arrays to set as initial weights.
             The list should have 2 elements, of shape `(input_dim, output_dim)`
             and (output_dim,) for weights and biases respectively.
         W_regularizer: instance of [WeightRegularizer](../regularizers.md)
@@ -702,12 +702,7 @@ class MaxoutDense(Layer):
             or alternatively, Theano function to use for weights
             initialization. This parameter is only relevant
             if you don't pass a `weights` argument.
-        activation: name of activation function to use
-            (see [activations](../activations.md)),
-            or alternatively, elementwise Theano function.
-            If you don't specify anything, no activation is applied
-            (ie. "linear" activation: a(x) = x).
-        weights: list of numpy arrays to set as initial weights.
+        weights: list of Numpy arrays to set as initial weights.
             The list should have 2 elements, of shape `(input_dim, output_dim)`
             and (output_dim,) for weights and biases respectively.
         W_regularizer: instance of [WeightRegularizer](../regularizers.md)
@@ -839,7 +834,7 @@ class Highway(Layer):
             or alternatively, elementwise Theano function.
             If you don't specify anything, no activation is applied
             (ie. "linear" activation: a(x) = x).
-        weights: list of numpy arrays to set as initial weights.
+        weights: list of Numpy arrays to set as initial weights.
             The list should have 2 elements, of shape `(input_dim, output_dim)`
             and (output_dim,) for weights and biases respectively.
         W_regularizer: instance of [WeightRegularizer](../regularizers.md)
@@ -988,7 +983,7 @@ class TimeDistributedDense(Layer):
             or alternatively, elementwise Theano function.
             If you don't specify anything, no activation is applied
             (ie. "linear" activation: a(x) = x).
-        weights: list of numpy arrays to set as initial weights.
+        weights: list of Numpy arrays to set as initial weights.
             The list should have 2 elements, of shape `(input_dim, output_dim)`
             and (output_dim,) for weights and biases respectively.
         W_regularizer: instance of [WeightRegularizer](../regularizers.md)
