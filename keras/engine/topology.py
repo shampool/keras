@@ -2347,23 +2347,37 @@ class Container(Layer):
             # new file format
             layer_names = [n.decode('utf8') for n in f.attrs['layer_names']]
             if len(layer_names) != len(flattened_layers):
-                raise Exception('You are trying to load a weight file '
+                import warnings
+                warnings.warn('You are trying to load a weight file '
                                 'containing ' + str(len(layer_names)) +
                                 ' layers into a model with ' +
                                 str(len(flattened_layers)) + ' layers.')
 
+                #raise Exception('You are trying to load a weight file '
+                #                'containing ' + str(len(layer_names)) +
+                #                ' layers into a model with ' +
+                #                str(len(flattened_layers)) + ' layers.')
+
             # we batch weight value assignments in a single backend call
             # which provides a speedup in TensorFlow.
             weight_value_tuples = []
+            para_ind = -1
+            non_empty_layers = []
+            for pind,flayer in enumerate(flattened_layers):
+                symbolic_weights = flayer.trainable_weights + flayer.non_trainable_weights
+                if len(symbolic_weights) != 0:
+                    non_empty_layers.append(flayer)
+            
             for k, name in enumerate(layer_names):
                 g = f[name]
                 weight_names = [n.decode('utf8') for n in g.attrs['weight_names']]
                 if len(weight_names):
+                    para_ind = para_ind + 1
                     weight_values = [g[weight_name] for weight_name in weight_names]
-                    layer = flattened_layers[k]
+                    layer = non_empty_layers[para_ind]
                     symbolic_weights = layer.trainable_weights + layer.non_trainable_weights
                     if len(weight_values) != len(symbolic_weights):
-                        raise Exception('Layer #' + str(k) +
+                        raise Exception('Layer #' + str(para_ind) +
                                         ' (named "' + layer.name +
                                         '" in the current model) was found to '
                                         'correspond to layer ' + name +

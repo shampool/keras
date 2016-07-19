@@ -18,6 +18,12 @@ _LEARNING_PHASE = T.scalar(dtype='uint8', name='keras_learning_phase')  # 0 = te
 Variable = theano.Variable  #denote the tensor variable type
 FLOATX = _FLOATX
 
+def addAttribute(x, attr=None, value=None):
+    if attr is not None:
+       setattr(x, attr, value)
+    return x
+
+
 def learning_phase():
     # False = test, True = train
     return _LEARNING_PHASE

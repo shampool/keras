@@ -14,7 +14,6 @@ def clip_norm(g, c, n):
 def kl_divergence(p, p_hat):
     return p_hat - p + p * K.log(p / p_hat)
 
-
 class Optimizer(object):
     '''Abstract optimizer base class.
 
@@ -27,9 +26,15 @@ class Optimizer(object):
             when their L2 norm exceeds this value.
         clipvalue: float >= 0. Gradients will be clipped
             when their absolute value exceeds this value.
+        noise: True or False, Gradients will be added gaussian noise with 
+               decaying std. 
+               Adding Gradient Noise Improves Learning for Very Deep Networks.(https://arxiv.org/abs/1511.06807)
     '''
     def __init__(self, **kwargs):
-        allowed_kwargs = {'clipnorm', 'clipvalue'}
+        allowed_kwargs = {'clipnorm', 'clipvalue', 'eta','gamma','noise'}
+        self.eta= 1.0
+        self.gamma = 0.55
+        self.noise = True
         for k in kwargs:
             if k not in allowed_kwargs:
                 raise Exception('Unexpected keyword argument '
@@ -37,7 +42,7 @@ class Optimizer(object):
         self.__dict__.update(kwargs)
         self.updates = []
         self.weights = []
-
+        
     def get_state(self):
         return [K.get_value(u[0]) for u in self.updates]
 
@@ -51,11 +56,20 @@ class Optimizer(object):
 
     def get_gradients(self, loss, params):
         grads = K.gradients(loss, params)
+        grads = self.modify_gradients(grads)
+        return grads
+
+    def modify_gradients(self, grads):
         if hasattr(self, 'clipnorm') and self.clipnorm > 0:
             norm = K.sqrt(sum([K.sum(K.square(g)) for g in grads]))
             grads = [clip_norm(g, self.clipnorm, norm) for g in grads]
         if hasattr(self, 'clipvalue') and self.clipvalue > 0:
-            grads = [K.clip(g, -self.clipvalue, self.clipvalue) for g in grads]
+            grads = [K.clip(g, -self.clipvalue, self.clipvalue) for g in grads]    
+        if hasattr(self,'noise') and self.noise is True:
+            noise_iterations =  K.variable(0.)
+            self.updates.append((noise_iterations, noise_iterations + 1.))
+            sigma_sqr = self.eta / (1. + noise_iterations)**self.gamma   
+            grads = [g + K.normal(K.shape(g), std=sigma_sqr) for g in grads]        
         return grads
 
     def set_weights(self, weights):
@@ -99,7 +113,14 @@ class Optimizer(object):
             config['clipnorm'] = self.clipnorm
         if hasattr(self, 'clipvalue'):
             config['clipvalue'] = self.clipvalue
+        if hasattr(self, 'noise'):
+            config['noise'] = self.noise
+        if hasattr(self, 'eta'):
+            config['eta'] = self.eta
+        if hasattr(self, 'gamma'):
+            config['gamma'] = self.gamma
         return config
+
 
 
 class SGD(Optimizer):
@@ -124,7 +145,7 @@ class SGD(Optimizer):
     def get_updates(self, params, constraints, loss):
         grads = self.get_gradients(loss, params)
         lr = self.lr * (1. / (1. + self.decay * self.iterations))
-        self.updates = [(self.iterations, self.iterations + 1.)]
+        self.updates.append((self.iterations, self.iterations + 1.))
 
         # momentum
         self.weights = [K.variable(np.zeros(K.get_value(p).shape)) for p in params]
@@ -178,7 +199,6 @@ class RMSprop(Optimizer):
         grads = self.get_gradients(loss, params)
         # accumulators
         self.weights = [K.variable(np.zeros(K.get_value(p).shape)) for p in params]
-        self.updates = []
 
         for p, g, a in zip(params, grads, self.weights):
             # update accumulator
@@ -220,7 +240,6 @@ class Adagrad(Optimizer):
         grads = self.get_gradients(loss, params)
         # accumulators
         self.weights = [K.variable(np.zeros(K.get_value(p).shape)) for p in params]
-        self.updates = []
 
         for p, g, a in zip(params, grads, self.weights):
             new_a = a + K.square(g)  # update accumulator
@@ -265,7 +284,6 @@ class Adadelta(Optimizer):
         accumulators = [K.variable(np.zeros(K.get_value(p).shape)) for p in params]
         delta_accumulators = [K.variable(np.zeros(K.get_value(p).shape)) for p in params]
         self.weights = accumulators + delta_accumulators
-        self.updates = []
 
         for p, g, a, d_a in zip(params, grads, accumulators, delta_accumulators):
             # update accumulator
@@ -319,7 +337,7 @@ class Adam(Optimizer):
 
     def get_updates(self, params, constraints, loss):
         grads = self.get_gradients(loss, params)
-        self.updates = [(self.iterations, self.iterations + 1)]
+        self.updates.append((self.iterations, self.iterations + 1))
 
         t = self.iterations + 1
         lr_t = self.lr * K.sqrt(1. - K.pow(self.beta_2, t)) / (1. - K.pow(self.beta_1, t))
@@ -378,7 +396,7 @@ class Adamax(Optimizer):
 
     def get_updates(self, params, constraints, loss):
         grads = self.get_gradients(loss, params)
-        self.updates = [(self.iterations, self.iterations + 1)]
+        self.updates.append((self.iterations, self.iterations + 1))
 
         t = self.iterations + 1
         lr_t = self.lr / (1. - K.pow(self.beta_1, t))
@@ -447,7 +465,7 @@ class Nadam(Optimizer):
 
     def get_updates(self, params, constraints, loss):
         grads = self.get_gradients(loss, params)
-        self.updates = [(self.iterations, self.iterations + 1)]
+        self.updates.append((self.iterations, self.iterations + 1))
 
         t = self.iterations + 1
 

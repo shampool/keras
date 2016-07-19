@@ -28,15 +28,19 @@ def get_fans(shape, dim_ordering='th',**kwargs):
     return fan_in, fan_out
 
 
-def uniform(shape, scale=0.05, name=None,**kwargs):
-    return K.variable(np.random.uniform(low=-scale, high=scale, size=shape),
+def uniform(shape, scale=0.05, name=None,symbolic=True, **kwargs):
+    if symbolic:
+       return K.variable(np.random.uniform(low=-scale, high=scale, size=shape),
                       name=name)
+    else:
+       return np.random.uniform(low=-scale, high=scale, size=shape)
 
-
-def normal(shape, scale=0.05, name=None,**kwargs):
-    return K.variable(np.random.normal(loc=0.0, scale=scale, size=shape),
+def normal(shape, scale=0.05, name=None,symbolic=True,**kwargs):
+    if symbolic:
+       return K.variable(np.random.normal(loc=0.0, scale=scale, size=shape),
                       name=name)
-
+    else:
+       return np.random.normal(loc=0.0, scale=scale, size=shape)
 
 def lecun_uniform(shape, name=None, dim_ordering='th',**kwargs):
     ''' Reference: LeCun 98, Efficient Backprop
@@ -83,7 +87,7 @@ def get_orthogonal(shape, scale=1.):
     return scale*q
 
 
-def orthogonal(shape, scale=1., name=None, **kwargs):
+def orthogonal(shape, scale=1., name=None, symbolic=True,**kwargs):
     ''' From Lasagne. Reference: Saxe et al., http://arxiv.org/abs/1312.6120
     '''
     flat_shape = (shape[0], np.prod(shape[1:]))
@@ -92,25 +96,34 @@ def orthogonal(shape, scale=1., name=None, **kwargs):
     # pick the one with the correct shape
     q = u if u.shape == flat_shape else v
     q = q.reshape(shape)
-    return K.variable(scale * q[:shape[0], :shape[1]], name=name)
+    if symbolic:
+       return K.variable(scale * q[:shape[0], :shape[1]], name=name)
+    else:
+       return scale * q[:shape[0], :shape[1]]
 
 
-
-def identity(shape, scale=1, dim_ordering='tf',name=None,**kwargs):
+def identity(shape, scale=1, dim_ordering='tf',name=None,symbolic=True,**kwargs):
     if len(shape) != 2 or shape[0] != shape[1]:
         raise Exception('Identity matrix initialization can only be used '
                         'for 2D square matrices.')
     else:
-        return K.variable(scale * np.identity(shape[0]), name=name)
+        if symbolic:
+           return K.variable(scale * np.identity(shape[0]), name=name)  
+        else:
+           return scale * np.identity(shape[0])
+
+def zero(shape, name=None,symbolic=True,**kwargs):
+    if symbolic:
+       return K.ones(shape, name=name)
+    else:
+       return np.ones(shape) 
 
 
-def zero(shape, name=None,**kwargs):
-    return K.zeros(shape, name=name)
-
-
-def one(shape, name=None,**kwargs):
-    return K.ones(shape, name=name)
-
+def one(shape, name=None,symbolic=True,**kwargs):
+    if symbolic:
+       return K.ones(shape, name=name)
+    else:
+       return np.ones(shape) 
 from fractions import gcd
 # TH kernel shape: (depth, input_depth, ...)
 # TF kernel shape: (..., input_depth, depth)
@@ -150,18 +163,23 @@ def conv_init(shape, scale=1, dim_ordering='th',mode ='orthogonal', **kwargs):
     return res
 
 
-def conv_identity(shape, dim_ordering='th', name=None, **kwargs):
+def conv_identity(shape, dim_ordering='th', name=None, symbolic=True,**kwargs):
     if len(shape) != 4:
        raise Exception("filter dimension not equal 4 is not supported yet!")
     this_data = conv_init(shape, dim_ordering=dim_ordering,mode ='identity')
-    return K.variable(this_data, name=name)
+    if symbolic:
+      return K.variable(this_data, name=name)
+    else:
+      return this_data
 
-def conv_orthogonal(shape,dim_ordering='th', name=None, **kwargs):
+def conv_orthogonal(shape,dim_ordering='th', name=None,symbolic=True, **kwargs):
     if len(shape) != 4:
        raise Exception("filter dimension not equal 4 is not supported yet!")
     this_data = conv_init(shape, dim_ordering=dim_ordering,mode ='orthogonal')
-    return K.variable(this_data, name=name)
-
+    if symbolic:
+      return K.variable(this_data, name=name)
+    else:
+      return this_data
 
 from .utils.generic_utils import get_from_module
 def get(identifier, **kwargs):
