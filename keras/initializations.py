@@ -42,6 +42,7 @@ def normal(shape, scale=0.05, name=None,symbolic=True,**kwargs):
     else:
        return np.random.normal(loc=0.0, scale=scale, size=shape)
 
+
 def lecun_uniform(shape, name=None, dim_ordering='th',**kwargs):
     ''' Reference: LeCun 98, Efficient Backprop
         http://yann.lecun.com/exdb/publis/pdf/lecun-98b.pdf

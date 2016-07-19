@@ -1,9 +1,10 @@
 import tensorflow as tf
+from tensorflow.python.framework.ops import reset_default_graph
 import numpy as np
 import os
 import copy
 import warnings
-from .common import _FLOATX, _EPSILON
+from .common import _FLOATX, _EPSILON, _IMAGE_DIM_ORDERING, reset_uids
 
 
 #-----------------tensorflow testing board--------------
@@ -128,8 +129,31 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
 
 _SESSION = None
 _LEARNING_PHASE = tf.placeholder(dtype='uint8', name='keras_learning_phase')  # 0 = test, 1 = train
+
 Variable = tf.Variable  #denote the tensor variable type
 FLOATX = _FLOATX
+
+_MANUAL_VAR_INIT = False
+
+
+def clear_session():
+    global _SESSION
+    global _LEARNING_PHASE
+    reset_default_graph()
+    reset_uids()
+    _SESSION = None
+    _LEARNING_PHASE = tf.placeholder(dtype='uint8', name='keras_learning_phase')
+
+
+def manual_variable_initialization(value):
+    '''Whether variables should be initialized
+    as they are instantiated (default), or if
+    the user should handle the initialization
+    (e.g. via tf.initialize_all_variables()).
+    '''
+    global _MANUAL_VAR_INIT
+    _MANUAL_VAR_INIT = value
+
 
 def learning_phase():
     '''Returns the learning phase flag.
@@ -184,6 +208,30 @@ def set_session(session):
 
 # VARIABLE MANIPULATION
 
+def _convert_string_dtype(dtype):
+    if dtype == 'float16':
+        return tf.float16
+    if dtype == 'float32':
+        return tf.float32
+    elif dtype == 'float64':
+        return tf.float64
+    elif dtype == 'int32':
+        return tf.int32
+    elif dtype == 'int64':
+        return tf.int64
+    elif dtype == 'uint8':
+        return tf.int8
+    else:
+        raise ValueError('Unsupported dtype:', dtype)
+
+
+def _to_tensor(x, dtype):
+    x = tf.python.framework.ops.convert_to_tensor(x)
+    if x.dtype != dtype:
+        x = tf.cast(x, dtype)
+    return x
+
+
 def variable(value, dtype=_FLOATX, name=None):
     '''Instantiates a tensor.
 
@@ -195,7 +243,9 @@ def variable(value, dtype=_FLOATX, name=None):
     # Returns
         Tensor variable instance.
     '''
-    v = tf.Variable(np.asarray(value, dtype=dtype), name=name)
+    v = tf.Variable(value, dtype=_convert_string_dtype(dtype), name=name)
+    if _MANUAL_VAR_INIT:
+        return v
     if tf.get_default_graph() is get_session().graph:
         try:
             get_session().run(v.initializer)
@@ -246,6 +296,7 @@ def shape(x):
 def int_shape(x):
     '''Returns the shape of a tensor as a tuple of
     integers or None entries.
+    Note that this function only works with TensorFlow.
     '''
     shape = x.get_shape()
     return tuple([i.__int__() for i in shape])
@@ -276,13 +327,17 @@ def eval(x):
 def zeros(shape, dtype=_FLOATX, name=None):
     '''Instantiates an all-zeros tensor variable.
     '''
-    return variable(np.zeros(shape), dtype, name)
+    shape = map(int, shape)
+    tf_dtype = _convert_string_dtype(dtype)
+    return variable(tf.constant_initializer(0., dtype=tf_dtype)(shape), dtype, name)
 
 
 def ones(shape, dtype=_FLOATX, name=None):
     '''Instantiates an all-ones tensor variable.
     '''
-    return variable(np.ones(shape), dtype, name)
+    shape = map(int, shape)
+    tf_dtype = _convert_string_dtype(dtype)
+    return variable(tf.constant_initializer(1., dtype=tf_dtype)(shape), dtype, name)
 
 
 def eye(size, dtype=_FLOATX, name=None):
@@ -305,6 +360,20 @@ def ones_like(x, name=None):
     return tf.ones_like(x, name=name)
 
 
+def random_uniform_variable(shape, low, high, dtype=_FLOATX, name=None):
+    shape = map(int, shape)
+    tf_dtype = _convert_string_dtype(dtype)
+    value = tf.random_uniform_initializer(low, high, dtype=tf_dtype)(shape)
+    return variable(value, dtype=dtype, name=name)
+
+
+def random_normal_variable(shape, mean, scale, dtype=_FLOATX, name=None):
+    shape = map(int, shape)
+    tf_dtype = _convert_string_dtype(dtype)
+    value = tf.random_normal_initializer(mean, scale, dtype=tf_dtype)(shape)
+    return variable(value, dtype=dtype, name=name)
+
+
 def count_params(x):
     '''Returns the number of scalars in a tensor.
     '''
@@ -316,6 +385,26 @@ def cast(x, dtype):
     '''Casts a tensor to a different dtype.
     '''
     return tf.cast(x, dtype)
+
+
+# UPDATES OPS
+
+
+def update(x, new_x):
+    return tf.assign(x, new_x)
+
+
+def update_add(x, increment):
+    return tf.assign_add(x, increment)
+
+
+def update_sub(x, decrement):
+    return tf.assign_sub(x, decrement)
+
+
+def moving_average_update(variable, value, momentum):
+    return tf.python.training.moving_averages.assign_moving_average(
+        variable, value, momentum)
 
 
 # LINEAR ALGEBRA
@@ -345,20 +434,36 @@ def batch_dot(x, y, axes=None):
     If the number of dimensions is reduced to 1, we use `expand_dims` to
     make sure that ndim is at least 2.
 
-    # Example
-        Assume x = [[1, 2]   and y = [[5, 6]
-                    [3, 4]]           [7, 8]]
-        batch_dot(x, y, axes=1) = [[17, 53]] which is the main diagonal
-        of x.dot(y.T), although we never have to calculate the off-diagonal
-        elements.
-
-
     # Arguments
         x, y: tensors with ndim >= 2
         axes: list (or single) int with target dimensions
 
     # Returns
-        Tensor with ndim >= 2
+        A tensor with shape equal to the concatenation of x's shape
+        (less the dimension that was summed over) and y's shape
+        (less the batch dimension and the dimension that was summed over).
+        If the final rank is 1, we reshape it to (batch_size, 1).
+
+    # Examples
+        Assume x = [[1, 2], [3, 4]]   and y = [[5, 6], [7, 8]]
+        batch_dot(x, y, axes=1) = [[17, 53]] which is the main diagonal
+        of x.dot(y.T), although we never have to calculate the off-diagonal
+        elements.
+
+        Shape inference:
+        Let x's shape be (100, 20) and y's shape be (100, 30, 20).
+        If dot_axes is (1, 2), to find the output shape of resultant tensor,
+            loop through each dimension in x's shape and y's shape:
+        x.shape[0] : 100 : append to output shape
+        x.shape[1] : 20 : do not append to output shape,
+            dimension 1 of x has been summed over. (dot_axes[0] = 1)
+        y.shape[0] : 100 : do not append to output shape,
+            always ignore first dimension of y
+        y.shape[1] : 30 : append to output shape
+        y.shape[2] : 20 : do not append to output shape,
+            dimension 2 of y has been summed over. (dot_axes[1] = 2)
+
+        output_shape = (100, 30)
     '''
     if type(axes) == int:
         axes = (axes, axes)
@@ -476,6 +581,17 @@ def any(x, axis=None, keepdims=False):
     return tf.cast(x, tf.uint8)
 
 
+def all(x, axis=None, keepdims=False):
+    '''Bitwise reduction (logical AND).
+
+    Returns an uint8 tensor
+    '''
+    axis = _normalize_axis(axis, ndim(x))
+    x = tf.cast(x, tf.bool)
+    x = tf.reduce_all(x, reduction_indices=axis, keep_dims=keepdims)
+    return tf.cast(x, tf.uint8)
+
+
 def argmax(x, axis=-1):
     '''Returns the index of the maximum value
     along a tensor axis.
@@ -509,8 +625,9 @@ def abs(x):
 def sqrt(x):
     '''Element-wise square root.
     '''
-    x = tf.clip_by_value(x, tf.cast(0., dtype=_FLOATX),
-                         tf.cast(np.inf, dtype=_FLOATX))
+    zero = _to_tensor(0., x.dtype.base_dtype)
+    inf = _to_tensor(np.inf, x.dtype.base_dtype)
+    x = tf.clip_by_value(x, zero, inf)
     return tf.sqrt(x)
 
 
@@ -549,8 +666,9 @@ def clip(x, min_value, max_value):
     '''
     if max_value < min_value:
         max_value = min_value
-    return tf.clip_by_value(x, tf.cast(min_value, dtype=_FLOATX),
-                            tf.cast(max_value, dtype=_FLOATX))
+    min_value = _to_tensor(min_value, x.dtype.base_dtype)
+    max_value = _to_tensor(max_value, x.dtype.base_dtype)
+    return tf.clip_by_value(x, min_value, max_value)
 
 
 def equal(x, y):
@@ -589,6 +707,42 @@ def cos(x):
     '''Computes cos of x element-wise.
     '''
     return tf.cos(x)
+
+
+def normalize_batch_in_training(x, gamma, beta,
+                                reduction_axes, epsilon=0.0001):
+    '''Compute mean and std for batch then apply batch_normalization on batch.
+    '''
+    mean, std = tf.nn.moments(x, reduction_axes,
+                              shift=None, name=None, keep_dims=False)
+    if sorted(reduction_axes) == range(ndim(x))[:-1]:
+        normed = tf.nn.batch_normalization(x, mean, std,
+                                           beta, gamma,
+                                           epsilon)
+    else:
+        # need broadcasting
+        target_shape = []
+        for axis in range(ndim(x)):
+            if axis in reduction_axes:
+                target_shape.append(1)
+            else:
+                target_shape.append(tf.shape(x)[axis])
+        target_shape = tf.pack(target_shape)
+
+        broadcast_mean = tf.reshape(mean, target_shape)
+        broadcast_std = tf.reshape(std, target_shape)
+        broadcast_gamma = tf.reshape(gamma, target_shape)
+        broadcast_beta = tf.reshape(beta, target_shape)
+        normed = tf.nn.batch_normalization(x, broadcast_mean, broadcast_std,
+                                           broadcast_beta, broadcast_gamma,
+                                           epsilon)
+    return normed, mean, std
+
+
+def batch_normalization(x, mean, std, beta, gamma, epsilon=0.0001):
+    '''Apply batch normalization on x given mean, std, beta and gamma.
+    '''
+    return tf.nn.batch_normalization(x, mean, std, beta, gamma, epsilon)
 
 
 # SHAPE OPERATIONS
@@ -686,7 +840,7 @@ def batch_flatten(x):
     '''Turn a n-D tensor into a 2D tensor where
     the first dimension is conserved.
     '''
-    x = tf.reshape(x, [-1, np.prod(x.get_shape()[1:].as_list())])
+    x = tf.reshape(x, [-1, prod(shape(x)[1:])])
     return x
 
 
@@ -766,6 +920,7 @@ def batch_set_value(tuples):
         ops = [tf.assign(x, np.asarray(value)) for x, value in tuples]
         get_session().run(ops)
 
+
 # GRAPH MANIPULATION
 
 class Function(object):
@@ -777,14 +932,22 @@ class Function(object):
         self.inputs = list(inputs)
         self.outputs = list(outputs)
         with tf.control_dependencies(self.outputs):
-            self.updates = [tf.assign(p, new_p) for (p, new_p) in updates]
+            updates_ops = []
+            for update in updates:
+                if type(update) is tuple:
+                    p, new_p = update
+                    updates_ops.append(tf.assign(p, new_p))
+                else:
+                    # assumed already an op
+                    updates_ops.append(update)
+            self.updates_op = tf.group(*updates_ops)
 
     def __call__(self, inputs):
         assert type(inputs) in {list, tuple}
         names = [v.name for v in self.inputs]
         feed_dict = dict(zip(names, inputs))
         session = get_session()
-        updated = session.run(self.outputs + self.updates, feed_dict=feed_dict)
+        updated = session.run(self.outputs + [self.updates_op], feed_dict=feed_dict)
         return updated[:len(self.outputs)]
 
 
@@ -810,6 +973,13 @@ def gradients(loss, variables):
     with regard to `loss`.
     '''
     return tf.gradients(loss, variables)
+
+
+def stop_gradient(variables):
+    '''Returns `variables` but with zero gradient with respect to every other
+    variables.
+    '''
+    return tf.stop_gradient(variables)
 
 
 # CONTROL FLOW
@@ -975,14 +1145,16 @@ def relu(x, alpha=0., max_value=None):
         alpha: slope of negative section.
         max_value: saturation threshold.
     '''
-    negative_part = tf.nn.relu(-x)
+    if alpha != 0.:
+        negative_part = tf.nn.relu(-x)
     x = tf.nn.relu(x)
     if max_value is not None:
-        x = tf.clip_by_value(x, tf.cast(0., dtype=_FLOATX),
-                             tf.cast(max_value, dtype=_FLOATX))
-    if isinstance(alpha, (tuple, list, np.ndarray)) or np.isscalar(alpha):
-        alpha = tf.constant(alpha, dtype=_FLOATX)
-    x -= alpha * negative_part
+        max_value = _to_tensor(max_value, x.dtype.base_dtype)
+        zero = _to_tensor(0., x.dtype.base_dtype)
+        x = tf.clip_by_value(x, zero, max_value)
+    if alpha != 0.:
+        alpha = _to_tensor(alpha, x.dtype.base_dtype)
+        x -= alpha * negative_part
     return x
 
 
@@ -1015,8 +1187,8 @@ def categorical_crossentropy(output, target, from_logits=False):
                                 reduction_indices=len(output.get_shape()) - 1,
                                 keep_dims=True)
         # manual computation of crossentropy
-        output = tf.clip_by_value(output, tf.cast(_EPSILON, dtype=_FLOATX),
-                                  tf.cast(1. - _EPSILON, dtype=_FLOATX))
+        epsilon = _to_tensor(_EPSILON, output.dtype.base_dtype)
+        output = tf.clip_by_value(output, epsilon, 1. - epsilon)
         return - tf.reduce_sum(target * tf.log(output),
                                reduction_indices=len(output.get_shape()) - 1)
     else:
@@ -1030,8 +1202,8 @@ def sparse_categorical_crossentropy(output, target, from_logits=False):
     # Note: tf.nn.softmax_cross_entropy_with_logits
     # expects logits, Keras expects probabilities.
     if not from_logits:
-        output = tf.clip_by_value(output, tf.cast(_EPSILON, dtype=_FLOATX),
-                                  tf.cast(1.-_EPSILON, dtype=_FLOATX))
+        epsilon = _to_tensor(_EPSILON, output.dtype.base_dtype)
+        output = tf.clip_by_value(output, epsilon, 1 - epsilon)
         output = tf.log(output)
 
     output_shape = output.get_shape()
@@ -1052,8 +1224,8 @@ def binary_crossentropy(output, target, from_logits=False):
     # expects logits, Keras expects probabilities.
     if not from_logits:
         # transform back to logits
-        output = tf.clip_by_value(output, tf.cast(_EPSILON, dtype=_FLOATX),
-                                  tf.cast(1.-_EPSILON, dtype=_FLOATX))
+        epsilon = _to_tensor(_EPSILON, output.dtype.base_dtype)
+        output = tf.clip_by_value(output, epsilon, 1 - epsilon)
         output = tf.log(output / (1 - output))
     return tf.nn.sigmoid_cross_entropy_with_logits(output, target)
 
@@ -1069,8 +1241,9 @@ def hard_sigmoid(x):
     Faster than sigmoid.
     '''
     x = (0.2 * x) + 0.5
-    x = tf.clip_by_value(x, tf.cast(0., dtype=_FLOATX),
-                         tf.cast(1., dtype=_FLOATX))
+    zero = _to_tensor(0., x.dtype.base_dtype)
+    one = _to_tensor(1., x.dtype.base_dtype)
+    x = tf.clip_by_value(x, zero, one)
     return x
 
 
@@ -1108,6 +1281,17 @@ def l2_normalize(x, axis):
 
 # CONVOLUTIONS
 
+def _preprocess_conv2d_input(x, dim_ordering):
+    if _FLOATX == 'float64':
+        x = tf.cast(x, 'float32')
+    if dim_ordering == 'th':
+        # TF uses the last dimension as channel dimension,
+        # instead of the 2nd one.
+        # TH input shape: (samples, input_depth, rows, cols)
+        # TF input shape: (samples, rows, cols, input_depth)
+        x = tf.transpose(x, (0, 2, 3, 1))
+    return x
+
 
 def conv2d(x, kernel, strides=(1, 1), border_mode='valid', dim_ordering='th',
            image_shape=None, filter_shape=None, dilated = 0, rate = 1):
@@ -1132,20 +1316,30 @@ def conv2d(x, kernel, strides=(1, 1), border_mode='valid', dim_ordering='th',
 
     strides = (1,) + strides + (1,)
 
-    if _FLOATX == 'float64':
-        # tf conv2d only supports float32
-        x = tf.cast(x, 'float32')
-        kernel = tf.cast(kernel, 'float32')
 
+def _preprocess_conv3d_input(x, dim_ordering):
+    if _FLOATX == 'float64':
+        x = tf.cast(x, 'float32')
     if dim_ordering == 'th':
         # TF uses the last dimension as channel dimension,
         # instead of the 2nd one.
-        # TH input shape: (samples, input_depth, rows, cols)
-        # TF input shape: (samples, rows, cols, input_depth)
+        # TH input shape: (samples, input_depth, conv_dim1, conv_dim2, conv_dim3)
+        # TF input shape: (samples, conv_dim1, conv_dim2, conv_dim3, input_depth)
+        x = tf.transpose(x, (0, 2, 3, 4, 1))
+    return x
+
+
+
+def _preprocess_conv2d_kernel(kernel, dim_ordering):
+    if _FLOATX == 'float64':
+        kernel = tf.cast(kernel, 'float32')
+    if dim_ordering == 'th':
+        # TF uses the last dimension as channel dimension,
+        # instead of the 2nd one.
         # TH kernel shape: (depth, input_depth, rows, cols)
         # TF kernel shape: (rows, cols, input_depth, depth)
-        x = tf.transpose(x, (0, 2, 3, 1))
         kernel = tf.transpose(kernel, (2, 3, 1, 0))
+
         if dilated == 0:
            x = tf.nn.conv2d(x, kernel, strides, padding=padding)
         else:
@@ -1159,15 +1353,174 @@ def conv2d(x, kernel, strides=(1, 1), border_mode='valid', dim_ordering='th',
         else:
            x= atrous_conv2d(x, kernel, rate = rate, padding=padding )
            #x= tf.nn.atrous_conv2d(x, kernel, rate = rate, padding=padding )
+
+    return kernel
+
+
+def _preprocess_conv3d_kernel(kernel, dim_ordering):
+    if _FLOATX == 'float64':
+        kernel = tf.cast(kernel, 'float32')
+    if dim_ordering == 'th':
+        # TF uses the last dimension as channel dimension,
+        # instead of the 2nd one.
+        # TH kernel shape: (out_depth, input_depth, kernel_dim1, kernel_dim2, kernel_dim3)
+        # TF kernel shape: (kernel_dim1, kernel_dim2, kernel_dim3, input_depth, out_depth)
+        kernel = tf.transpose(kernel, (2, 3, 4, 1, 0))
+    return kernel
+
+
+def _preprocess_border_mode(border_mode):
+    if border_mode == 'same':
+        padding = 'SAME'
+    elif border_mode == 'valid':
+        padding = 'VALID'
+
     else:
-        raise Exception('Unknown dim_ordering: ' + str(dim_ordering))
+        raise Exception('Invalid border mode: ' + str(border_mode))
+    return padding
+
+
+def _postprocess_conv2d_output(x, dim_ordering):
+    if dim_ordering == 'th':
+        x = tf.transpose(x, (0, 3, 1, 2))
 
     if _FLOATX == 'float64':
         x = tf.cast(x, 'float64')
     return x
 
+
+def _postprocess_conv3d_output(x, dim_ordering):
+    if dim_ordering == 'th':
+        x = tf.transpose(x, (0, 4, 1, 2, 3))
+
+    if _FLOATX == 'float64':
+        x = tf.cast(x, 'float64')
+    return x
+
+
+def conv2d(x, kernel, strides=(1, 1), border_mode='valid',
+           dim_ordering=_IMAGE_DIM_ORDERING,
+           image_shape=None, filter_shape=None, filter_dilation=(1, 1)):
+    '''2D convolution.
+
+    # Arguments
+        kernel: kernel tensor.
+        strides: strides tuple.
+        border_mode: string, "same" or "valid".
+        dim_ordering: "tf" or "th".
+            Whether to use Theano or TensorFlow dimension ordering
+            for inputs/kernels/ouputs.
+    '''
+    if dim_ordering not in {'th', 'tf'}:
+        raise Exception('Unknown dim_ordering ' + str(dim_ordering))
+
+    x = _preprocess_conv2d_input(x, dim_ordering)
+    kernel = _preprocess_conv2d_kernel(kernel, dim_ordering)
+    padding = _preprocess_border_mode(border_mode)
+    if filter_dilation == (1, 1):
+        strides = (1,) + strides + (1,)
+        x = tf.nn.conv2d(x, kernel, strides, padding=padding)
+    else:
+        assert filter_dilation[0] == filter_dilation[1]
+        assert strides == (1, 1), 'Invalid strides for dilated convolution'
+        x = tf.nn.atrous_conv2d(x, kernel, filter_dilation[0], padding=padding)
+    return _postprocess_conv2d_output(x, dim_ordering)
+
+
+def deconv2d(x, kernel, output_shape, strides=(1, 1),
+             border_mode='valid',
+             dim_ordering=_IMAGE_DIM_ORDERING,
+             image_shape=None, filter_shape=None):
+    '''2D deconvolution (i.e. transposed convolution).
+
+    # Arguments
+        x: input tensor.
+        kernel: kernel tensor.
+        output_shape: 1D int tensor for the output shape.
+        strides: strides tuple.
+        border_mode: string, "same" or "valid".
+        dim_ordering: "tf" or "th".
+            Whether to use Theano or TensorFlow dimension ordering
+            for inputs/kernels/ouputs.
+    '''
+    if dim_ordering not in {'th', 'tf'}:
+        raise Exception('Unknown dim_ordering ' + str(dim_ordering))
+
+    x = _preprocess_conv2d_input(x, dim_ordering)
+    kernel = _preprocess_conv2d_kernel(kernel, dim_ordering)
+    padding = _preprocess_border_mode(border_mode)
+    strides = (1,) + strides + (1,)
+
+    # TODO: pre-process output_shape if dim_ordering == th
+    x = tf.nn.conv2d_transpose(x, kernel, output_shape, strides,
+                               padding=padding)
+    return _postprocess_conv2d_output(x, dim_ordering)
+
+
+def atrous_conv2d(x, kernel, rate=1,
+                  border_mode='valid',
+                  dim_ordering=_IMAGE_DIM_ORDERING,
+                  image_shape=None, filter_shape=None):
+    if dim_ordering not in {'th', 'tf'}:
+        raise Exception('Unknown dim_ordering ' + str(dim_ordering))
+    if rate == 1:
+        return conv2d(x, kernel, strides=(1, 1), border_mode=border_mode,
+                      dim_ordering=dim_ordering)
+
+    x = _preprocess_conv2d_input(x, dim_ordering)
+    kernel = _preprocess_conv2d_kernel(kernel, dim_ordering)
+    padding = _preprocess_border_mode(border_mode)
+
+    x = tf.nn.atrous_conv2d(x, kernel, rate, padding)
+    return _postprocess_conv2d_output(x, dim_ordering)
+
+
+def separable_conv2d(x, depthwise_kernel, pointwise_kernel, strides=(1, 1),
+                     border_mode='valid', dim_ordering=_IMAGE_DIM_ORDERING):
+    if dim_ordering not in {'th', 'tf'}:
+        raise Exception('Unknown dim_ordering ' + str(dim_ordering))
+
+    x = _preprocess_conv2d_input(x, dim_ordering)
+    depthwise_kernel = _preprocess_conv2d_kernel(depthwise_kernel,
+                                                 dim_ordering)
+    pointwise_kernel = _preprocess_conv2d_kernel(pointwise_kernel,
+                                                 dim_ordering)
+    padding = _preprocess_border_mode(border_mode)
+    strides = (1,) + strides + (1,)
+
+    x = tf.nn.separable_conv2d(x, depthwise_kernel, pointwise_kernel,
+                               strides, padding)
+    return _postprocess_conv2d_output(x, dim_ordering)
+
+
+def conv3d(x, kernel, strides=(1, 1, 1),
+           border_mode='valid', dim_ordering=_IMAGE_DIM_ORDERING,
+           volume_shape=None, filter_shape=None):
+    '''3D convolution.
+
+    # Arguments
+        kernel: kernel tensor.
+        strides: strides tuple.
+        border_mode: string, "same" or "valid".
+        dim_ordering: "tf" or "th".
+            Whether to use Theano or TensorFlow dimension ordering
+            for inputs/kernels/ouputs.
+    '''
+    if dim_ordering not in {'th', 'tf'}:
+        raise Exception('Unknown dim_ordering ' + str(dim_ordering))
+
+    x = _preprocess_conv3d_input(x, dim_ordering)
+    kernel = _preprocess_conv3d_kernel(kernel, dim_ordering)
+    padding = _preprocess_border_mode(border_mode)
+    strides = (1,) + strides + (1,)
+
+    x = tf.nn.conv3d(x, kernel, strides, padding)
+    return _postprocess_conv3d_output(x, dim_ordering)
+
+
 def pool2d(x, pool_size, strides=(1, 1),
-           border_mode='valid', dim_ordering='th', pool_mode='max'):
+           border_mode='valid', dim_ordering=_IMAGE_DIM_ORDERING,
+           pool_mode='max'):
     '''2D Pooling.
 
     # Arguments
@@ -1177,43 +1530,53 @@ def pool2d(x, pool_size, strides=(1, 1),
         dim_ordering: one of "th", "tf".
         pool_mode: one of "max", "avg".
     '''
-    if border_mode == 'same':
-        padding = 'SAME'
-    elif border_mode == 'valid':
-        padding = 'VALID'
-    else:
-        raise Exception('Invalid border mode: ' + str(border_mode))
+    if dim_ordering not in {'th', 'tf'}:
+        raise Exception('Unknown dim_ordering ' + str(dim_ordering))
 
+    padding = _preprocess_border_mode(border_mode)
     strides = (1,) + strides + (1,)
     pool_size = (1,) + pool_size + (1,)
 
-    if _FLOATX == 'float64':
-        # tf max_pool only supports float32
-        x = tf.cast(x, 'float32')
+    x = _preprocess_conv2d_input(x, dim_ordering)
 
-    if dim_ordering in {'tf', 'th'}:
-        if dim_ordering == 'th':
-            # TF uses the last dimension as channel dimension,
-            # instead of the 2nd one.
-            # TH input shape: (samples, input_depth, rows, cols)
-            # TF input shape: (samples, rows, cols, input_depth)
-            # TH kernel shape: (depth, input_depth, rows, cols)
-            # TF kernel shape: (rows, cols, input_depth, depth)
-            x = tf.transpose(x, (0, 2, 3, 1))
-        if pool_mode == 'max':
-            x = tf.nn.max_pool(x, pool_size, strides, padding=padding)
-        elif pool_mode == 'avg':
-            x = tf.nn.avg_pool(x, pool_size, strides, padding=padding)
-        else:
-            raise Exception('Invalid pooling mode: ' + str(pool_mode))
-        if dim_ordering == 'th':
-            x = tf.transpose(x, (0, 3, 1, 2))
+    if pool_mode == 'max':
+        x = tf.nn.max_pool(x, pool_size, strides, padding=padding)
+    elif pool_mode == 'avg':
+        x = tf.nn.avg_pool(x, pool_size, strides, padding=padding)
     else:
-        raise Exception('Unknown dim_ordering: ' + str(dim_ordering))
+        raise Exception('Invalid pooling mode: ' + str(pool_mode))
 
-    if _FLOATX == 'float64':
-        x = tf.cast(x, 'float64')
-    return x
+    return _postprocess_conv2d_output(x, dim_ordering)
+
+
+def pool3d(x, pool_size, strides=(1, 1, 1), border_mode='valid',
+           dim_ordering=_IMAGE_DIM_ORDERING, pool_mode='max'):
+    '''3D Pooling.
+
+    # Arguments
+        pool_size: tuple of 3 integers.
+        strides: tuple of 3 integers.
+        border_mode: one of "valid", "same".
+        dim_ordering: one of "th", "tf".
+        pool_mode: one of "max", "avg".
+    '''
+    if dim_ordering not in {'th', 'tf'}:
+        raise Exception('Unknown dim_ordering ' + str(dim_ordering))
+
+    padding = _preprocess_border_mode(border_mode)
+    strides = (1,) + strides + (1,)
+    pool_size = (1,) + pool_size + (1,)
+
+    x = _preprocess_conv3d_input(x, dim_ordering)
+
+    if pool_mode == 'max':
+        x = tf.nn.max_pool3d(x, pool_size, strides, padding=padding)
+    elif pool_mode == 'avg':
+        x = tf.nn.avg_pool3d(x, pool_size, strides, padding=padding)
+    else:
+        raise Exception('Invalid pooling mode: ' + str(pool_mode))
+
+    return _postprocess_conv3d_output(x, dim_ordering)
 
 # Padding
 def spatial_2d_cropping_4specify(x, cropping=(1, 1, 1, 1), dim_ordering='th'):
@@ -1297,4 +1660,5 @@ def random_binomial(shape, p=0.0, dtype=_FLOATX, seed=None):
     if seed is None:
         seed = np.random.randint(10e6)
     return tf.select(tf.random_uniform(shape, dtype=dtype, seed=seed) <= p,
-                     tf.ones(shape), tf.zeros(shape))
+                     tf.ones(shape, dtype=dtype),
+                     tf.zeros(shape, dtype=dtype))
