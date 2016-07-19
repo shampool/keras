@@ -69,7 +69,7 @@ class Optimizer(object):
             noise_iterations =  K.variable(0.)
             self.updates.append((noise_iterations, noise_iterations + 1.))
             sigma_sqr = self.eta / (1. + noise_iterations)**self.gamma   
-            grads = [g + K.normal(K.shape(g), std=sigma_sqr) for g in grads]        
+            grads = [g + K.random_normal(K.shape(g), std=sigma_sqr) for g in grads]        
         return grads
 
     def set_weights(self, weights):
