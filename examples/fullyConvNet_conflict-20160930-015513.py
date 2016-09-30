@@ -3,7 +3,7 @@ import os
 os.environ['KERAS_BACKEND'] = 'theano'
 #os.environ['THEANO_FLAGS'] = 'device=gpu0,optimizer=fast_run,force_device=True, allow_gc=True'
 os.environ['THEANO_FLAGS'] = 'device=gpu0'
-# you dont need to install this fork 
+# you dont need to install this fork
 keras_root = '..'
 kerasversion = 'keras-1'
 sys.path.insert(0, os.path.join(keras_root))
@@ -100,9 +100,9 @@ def batchflow(batch_size, *Data):
             yield tuple(batch_tuple)
 
 
-batch_size = 16
+batch_size = 2
 weightspath = 'weights.h5'
-nsamples = 1000 
+nsamples = 1000
 input_dimension = (nsamples, 3, 224,224) # nsample * channel * row * col
 output_dimension = (nsamples, 1, 224,224) # output is simple a mask
 # please note that, the fcn model does not assume a fixed row and col size.
