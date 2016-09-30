@@ -10,7 +10,6 @@ from ..utils.np_utils import conv_output_length
 from .pooling import AveragePooling1D, AveragePooling2D, AveragePooling3D
 from .pooling import MaxPooling1D, MaxPooling2D, MaxPooling3D
 
-
 class Convolution1D(Layer):
     '''Convolution operator for filtering neighborhoods of one-dimensional inputs.
     When using this layer as the first layer in a model,
@@ -949,7 +948,6 @@ class Convolution3D(Layer):
         base_config = super(Convolution3D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-<<<<<<< HEAD
 class _Pooling1D(Layer):
     '''Abstract class for different pooling 1D layers.
     '''
@@ -1344,9 +1342,6 @@ class AveragePooling3D(_Pooling3D):
                           border_mode, dim_ordering, pool_mode='avg')
         return output
 
-=======
->>>>>>> origin/master
-
 class UpSampling1D(Layer):
     '''Repeat each temporal step `length` times along the time axis.
 
@@ -1658,7 +1653,6 @@ class ZeroPadding3D(Layer):
         base_config = super(ZeroPadding3D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-<<<<<<< HEAD
 class Resize2D(Layer):
     '''cropping layer for fully convolutional layer for 2D image(e.g. picture).
     # Input shape
@@ -1820,7 +1814,6 @@ class Resize3D(Layer):
                   }
         base_config = super(Resize2D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
-=======
 
 # Aliases
 
@@ -1829,4 +1822,4 @@ Conv2D = Convolution2D
 Conv3D = Convolution3D
 AtrousConv2D = AtrousConvolution2D
 SeparableConv2D = SeparableConvolution2D
->>>>>>> origin/master
+

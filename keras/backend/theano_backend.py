@@ -238,7 +238,16 @@ def min(x, axis=None, keepdims=False):
 def sum(x, axis=None, keepdims=False):
     '''Sum of the values in a tensor, alongside the specified axis.
     '''
-    return T.sum(x, axis=axis, keepdims=keepdims)
+    output = T.sum(x, axis=axis, keepdims=keepdims)
+    if hasattr(x, '_keras_shape'):
+        old_keras_shape = list(x._keras_shape)
+        if keepdims:
+            old_keras_shape[axis] = 1
+        else:
+            old_keras_shape.pop(axis)
+        output._keras_shape = tuple(old_keras_shape)
+        
+    return output
 
 
 def prod(x, axis=None, keepdims=False):
@@ -249,9 +258,18 @@ def prod(x, axis=None, keepdims=False):
 
 def mean(x, axis=None, keepdims=False):
     dtype = None
+    
     if 'int' in x.dtype:
         dtype = _FLOATX
-    return T.mean(x, axis=axis, keepdims=keepdims, dtype=dtype)
+    output = T.mean(x, axis=axis, keepdims=keepdims, dtype=dtype)
+    if hasattr(x, '_keras_shape'):
+        old_keras_shape = list(x._keras_shape)
+        if keepdims:
+            old_keras_shape[axis] = 1
+        else:
+            old_keras_shape.pop(axis)
+        output._keras_shape = tuple(old_keras_shape)
+    return output
 
 
 def std(x, axis=None, keepdims=False):
@@ -908,16 +926,11 @@ def l2_normalize(x, axis):
 
 # CONVOLUTIONS
 
-<<<<<<< HEAD
 def conv2d(x, kernel, strides=(1, 1), border_mode='valid', dim_ordering='th',
            image_shape=None, filter_shape=None,dilated = 0, rate = 1,**kwargs):
     '''
     border_mode: string, "same" or "valid".
-=======
-def conv2d(x, kernel, strides=(1, 1), border_mode='valid',
-           dim_ordering=_IMAGE_DIM_ORDERING, image_shape=None,
-           filter_shape=None, filter_dilation=(1, 1)):
-    '''2D convolution.
+    2D convolution.
 
     # Arguments
         kernel: kernel tensor.
@@ -926,7 +939,6 @@ def conv2d(x, kernel, strides=(1, 1), border_mode='valid',
         dim_ordering: "tf" or "th".
             Whether to use Theano or TensorFlow dimension ordering
         in inputs/kernels/ouputs.
->>>>>>> origin/master
     '''
     if dim_ordering not in {'th', 'tf'}:
         raise Exception('Unknown dim_ordering ' + str(dim_ordering))
@@ -970,28 +982,11 @@ def conv2d(x, kernel, strides=(1, 1), border_mode='valid',
     if filter_shape is not None:
         filter_shape = tuple(int_or_none(v) for v in filter_shape)
 
-<<<<<<< HEAD
     conv_out = T.nnet.conv2d(x, kernel,
                              border_mode=th_border_mode,
                              subsample=strides, filters_dilations = rate,
                              input_shape=image_shape,
                              filter_shape=filter_shape)
-=======
-    # TODO: remove the if statement when theano with no filter dilation is deprecated.
-    if filter_dilation == (1, 1):
-        conv_out = T.nnet.conv2d(x, kernel,
-                                 border_mode=th_border_mode,
-                                 subsample=strides,
-                                 input_shape=image_shape,
-                                 filter_shape=filter_shape)
-    else:
-        conv_out = T.nnet.conv2d(x, kernel,
-                                 border_mode=th_border_mode,
-                                 subsample=strides,
-                                 input_shape=image_shape,
-                                 filter_shape=filter_shape,
-                                 filter_dilation=filter_dilation)
->>>>>>> origin/master
 
 
     if border_mode == 'same':
@@ -1331,6 +1326,7 @@ def lrn(x, alpha = 1e-4, k = 2, beta=0.75, n =5,dim_ordering = 'th', **kwargs):
         return res
     else:
         raise Exception('Unknown dim_ordering: ' + str(dim_ordering))
+        
 def random_normal(shape, mean=0.0, std=1.0, dtype=_FLOATX, seed=None):
     if seed is None:
         seed = np.random.randint(1, 10e6)

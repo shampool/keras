@@ -1863,7 +1863,8 @@ class Container(Layer):
             if layer.name == name:
                 return layer
         if not layer:
-            raise Exception('No such layer: ' + name)
+            warnings.warn('No such layer: ' + name)
+            return None
 
     @property
     def updates(self):
@@ -2372,9 +2373,12 @@ class Container(Layer):
                 param_dset[:] = val
         f.flush()
         f.close()
-
-    def load_weights(self, filepath):
+    
+    def load_weights(self, filepath, max_layer=None, use_name = False):
         '''Load all layer weights from a HDF5 save file.
+        based on topology of network rather than layer name. 
+        layers that does not contain weights are exluded, thus you can
+        freely add new dropout layers and can can load weights correctly.
         '''
         import h5py
         f = h5py.File(filepath, mode='r')
@@ -2387,9 +2391,10 @@ class Container(Layer):
 
         if 'nb_layers' in f.attrs:
             # legacy format
+            import warnings
             nb_layers = f.attrs['nb_layers']
             if nb_layers != len(flattened_layers):
-                raise Exception('You are trying to load a weight file '
+                warnings.warn('You are trying to load a weight file '
                                 'containing ' + str(nb_layers) +
                                 ' layers into a model with ' +
                                 str(len(flattened_layers)) + '.')
@@ -2403,18 +2408,16 @@ class Container(Layer):
             layer_names = [n.decode('utf8') for n in f.attrs['layer_names']]
             if len(layer_names) != len(flattened_layers):
                 import warnings
+                
                 warnings.warn('You are trying to load a weight file '
                                 'containing ' + str(len(layer_names)) +
                                 ' layers into a model with ' +
                                 str(len(flattened_layers)) + ' layers.')
 
-                #raise Exception('You are trying to load a weight file '
-                #                'containing ' + str(len(layer_names)) +
-                #                ' layers into a model with ' +
-                #                str(len(flattened_layers)) + ' layers.')
-
             # we batch weight value assignments in a single backend call
             # which provides a speedup in TensorFlow.
+            if not max_layer:
+                max_layer = len(layer_names)
             weight_value_tuples = []
             para_ind = -1
             non_empty_layers = []
@@ -2424,25 +2427,34 @@ class Container(Layer):
                     non_empty_layers.append(flayer)
             
             for k, name in enumerate(layer_names):
+                if k == max_layer:
+                    break
                 g = f[name]
                 weight_names = [n.decode('utf8') for n in g.attrs['weight_names']]
                 if len(weight_names):
                     para_ind = para_ind + 1
                     weight_values = [g[weight_name] for weight_name in weight_names]
-                    layer = non_empty_layers[para_ind]
-                    symbolic_weights = layer.trainable_weights + layer.non_trainable_weights
-                    if len(weight_values) != len(symbolic_weights):
-                        raise Exception('Layer #' + str(para_ind) +
-                                        ' (named "' + layer.name +
-                                        '" in the current model) was found to '
-                                        'correspond to layer ' + name +
-                                        ' in the save file. '
-                                        'However the new layer ' + layer.name +
-                                        ' expects ' + str(len(symbolic_weights)) +
-                                        ' weights, but the saved weights have ' +
-                                        str(len(weight_values)) +
-                                        ' elements.')
-                    weight_value_tuples += zip(symbolic_weights, weight_values)
+                    if use_name == False:
+                        layer = non_empty_layers[para_ind]
+                    else:
+                        layer = self.get_layer(name = name)
+                    if layer is not None:
+                        symbolic_weights = layer.trainable_weights + layer.non_trainable_weights
+                        if len(weight_values) != len(symbolic_weights):
+                            raise Exception('Layer #' + str(para_ind) +
+                                            ' (named "' + layer.name +
+                                            '" in the current model) was found to '
+                                            'correspond to layer ' + name +
+                                            ' in the save file. '
+                                            'However the new layer ' + layer.name +
+                                            ' expects ' + str(len(symbolic_weights)) +
+                                            ' weights, but the saved weights have ' +
+                                            str(len(weight_values)) +
+                                            ' elements.')
+                        weight_value_tuples += zip(symbolic_weights, weight_values)
+                    else:
+                        warnings.warn('No such layer: ' + name)
+
             K.batch_set_value(weight_value_tuples)
         f.close()
 

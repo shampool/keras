@@ -278,7 +278,7 @@ class Permute(Layer):
         base_config = super(Permute, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
-
+    
 class Flatten(Layer):
     '''Flattens the input. Does not affect the batch size.
 
@@ -422,7 +422,7 @@ class Lambda(Layer):
             self._output_shape = output_shape
         super(Lambda, self).__init__(**kwargs)
 
-    def get_output_shape_for(self, input_shape):
+    def get_output_shape_for(self, input_shape): 
         if self._output_shape is None:
             # if TensorFlow, we can infer the output shape directly:
             if K._BACKEND == 'tensorflow':
@@ -442,7 +442,7 @@ class Lambda(Layer):
             nb_samples = input_shape[0] if input_shape else None
             return (nb_samples,) + tuple(self._output_shape)
         else:
-            shape = self._output_shape(input_shape)
+            shape = self._output_shape(input_shape, self)
             if type(shape) not in {list, tuple}:
                 raise Exception('output_shape function must return a tuple')
             return tuple(shape)
