@@ -2176,6 +2176,7 @@ class Resize2D(Layer):
             return (input_shape[0],
                     width,
                     height,
+                    input_shape[3])
 
     def call(self, X,  mask=None):
         input_shape =  list(K.shape(X))
