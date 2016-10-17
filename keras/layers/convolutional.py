@@ -398,8 +398,8 @@ class Convolution2D(Layer):
         self.input_spec = [InputSpec(ndim=4)]
         self.initial_weights = weights
 
-        self.dilated = dilated
-        self.rate = rate
+        #self.dilated = dilated
+        #self.rate = rate
         super(Convolution2D, self).__init__(**kwargs)
 
     def build(self, input_shape):
@@ -496,8 +496,9 @@ class Convolution2D(Layer):
                   'W_constraint': self.W_constraint.get_config() if self.W_constraint else None,
                   'b_constraint': self.b_constraint.get_config() if self.b_constraint else None,
                   'bias': self.bias,
-                  'dilated':self.dilated,
-                  'rate':self.rate}
+                  'atrous_rate':self.atrous_rate,
+                  #'rate':self.rate
+                  }
         base_config = super(Convolution2D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
