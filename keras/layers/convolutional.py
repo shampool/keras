@@ -2148,14 +2148,24 @@ class Resize2D(Layer):
     '''
 
 
-    def __init__(self, destin_shape = None, dim_ordering='th', input_ndim=4, **kwargs):
+    def __init__(self, destin_shape = None,input_tensor=None ,dim_ordering='th', input_ndim=4, **kwargs):
         super(Resize2D, self).__init__(**kwargs)
 
         assert dim_ordering in {'tf', 'th'}, 'dim_ordering must be in {tf, th}'
         self.dim_ordering = dim_ordering
         #self.layerbefore = tuple(layerbefore) # -1 means the previous layer
-        assert destin_shape is not None, 'Please specify the destination shape'
-        self.destin_shape = destin_shape
+        if input_tensor is not None:
+            self.destin_shape = K.shape(input_tensor)
+            if hasattr(input_tensor, '_keras_shape'):
+                self.input_keras_shape = input_tensor._keras_shape  
+            else:
+                self.input_keras_shape = tuple([None, None, None, None])
+        else:
+            self.input_keras_shape = tuple([None, None, None, None])
+
+            assert destin_shape is not None, 'Please specify the destination shape'
+            self.destin_shape = destin_shape
+        
         self.input_spec = [InputSpec(ndim=input_ndim)]
 
     def get_output_shape_for(self, input_shape):
@@ -2163,9 +2173,9 @@ class Resize2D(Layer):
         #    tmp = tmp.previous
         tmp_output_shape = self.destin_shape
         if self.dim_ordering == 'th':
-            destsize = tmp_output_shape[2:4]
+            destsize = self.input_keras_shape[2:4]
         elif self.dim_ordering == 'tf':
-            destsize = tmp_output_shape[1:3]
+            destsize = self.input_keras_shape[1:3]
         width =  destsize[0]
         height = destsize[1]
         if self.dim_ordering == 'th':

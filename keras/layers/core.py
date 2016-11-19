@@ -233,12 +233,9 @@ class Reshape(Layer):
         Use the keyword argument `input_shape`
         (tuple of integers, does not include the samples axis)
         when using this layer as the first layer in a model.
-
     # Output shape
         `(batch_size,) + target_shape`
-
     # Example
-
     ```python
         # as first layer in a Sequential model
         model = Sequential()
@@ -1055,6 +1052,119 @@ class Highway(Layer):
         base_config = super(Highway, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
+
+class TiedHighway(Layer):
+    input_ndim = 2
+    def __init__(self, init='glorot_uniform', transform_bias= -6,
+                 activation='linear', weights=None, friend_layer =None,
+                 W_regularizer=None, b_regularizer=None, activity_regularizer=None,
+                 W_constraint=None, b_constraint=None, input_dim=None, **kwargs):
+        self.init = initializations.get(init)
+        self.transform_bias = transform_bias
+        self.activationtype = activation
+        
+        if  activation != 'prelu':      
+            self.activation = activations.get(activation)
+        else:
+            self.activation = self.prelu
+          
+        self.W_regularizer = regularizers.get(W_regularizer)
+        self.b_regularizer = regularizers.get(b_regularizer)
+        self.activity_regularizer = regularizers.get(activity_regularizer)
+
+        self.W_constraint = constraints.get(W_constraint)
+        self.b_constraint = constraints.get(b_constraint)
+
+        
+        self.friend_layer = friend_layer
+        self.initial_weights = weights
+        self.input_dim = input_dim
+        self.input_spec = [InputSpec(ndim=2)]
+        if self.input_dim:
+            kwargs['input_shape'] = (self.input_dim,)
+        super(TiedHighway, self).__init__(**kwargs)
+            
+    def build(self, input_shape):
+        input_dim = input_shape[1]
+        if self.friend_layer is not None:       
+            friend_tied_weigths = self.friend_layer.tied_weights
+            if friend_tied_weigths is not None:
+                self.W, self.W_carry, self.W_hidden = friend_tied_weigths
+            else:
+                print('friend layer does not have tied_weights!\n')
+                self.W = self.init((input_dim, input_dim))
+                self.W_carry = self.init((input_dim, input_dim))
+                self.W_hidden = self.init((input_dim, input_dim))
+        else:
+            friend_tied_weigths = None 
+            self.W = self.init((input_dim, input_dim))
+            self.W_carry = self.init((input_dim, input_dim))
+            self.W_hidden = self.init((input_dim, input_dim))
+
+        self.tied_weights = (self.W, self.W_carry, self.W_hidden)
+
+        self.b = K.zeros((input_dim,)) 
+        self.b_carry = K.variable(np.ones((input_dim,)) * self.transform_bias) 
+        if self.activationtype == 'prelu':
+            self.alphas = self.init((input_dim,))
+            if friend_tied_weigths is not None:
+                self.params = [self.b,  self.b_carry, self.alphas]
+            else:
+                self.params = [self.W, self.b, self.W_carry, self.b_carry, self.W_hidden, self.alphas]
+        else:
+            if friend_tied_weigths:
+                self.params = [self.b, self.b_carry]
+            else:
+                self.params = [self.W, self.b, self.W_carry, self.b_carry, self.W_hidden]
+
+        self.regularizers = []
+        if self.W_regularizer:
+            self.W_regularizer.set_param(self.W)
+            self.regularizers.append(self.W_regularizer)
+
+        if self.b_regularizer:
+            self.b_regularizer.set_param(self.b)
+            self.regularizers.append(self.b_regularizer)
+
+        if self.activity_regularizer:
+            self.activity_regularizer.set_layer(self)
+            self.regularizers.append(self.activity_regularizer)
+
+        if self.initial_weights is not None:
+            self.set_weights(self.initial_weights)
+            del self.initial_weights
+        self.constraints = {}
+
+        #self.constraints = [self.W_constraint, self.b_constraint]
+    @property
+    def output_shape(self):
+        return (self.input_shape[0], self.input_shape[1])
+    
+
+    def call(self, X , mask =None):
+        act = self.activation(K.dot(X, self.W) + self.b)
+        transform_weight = activations.sigmoid(K.dot(X, self.W_carry) + K.dot(act, self.W_hidden) + self.b_carry)
+        output = transform_weight * act + (1 - transform_weight) * X
+        return output
+        
+    def prelu(self, X):
+        pos = K.relu(X)
+        neg = self.alphas * (X - abs(X)) * 0.5
+        return pos + neg
+        
+    def get_config(self):
+        config = {"name": self.__class__.__name__,
+                  "init": self.init.__name__,
+                  "transform_bias": self.transform_bias,
+                  "activation": self.activation.__name__,
+                  "W_regularizer": self.W_regularizer.get_config() if self.W_regularizer else None,
+                  "b_regularizer": self.b_regularizer.get_config() if self.b_regularizer else None,
+                  "activity_regularizer": self.activity_regularizer.get_config() if self.activity_regularizer else None,
+                  "W_constraint": self.W_constraint.get_config() if self.W_constraint else None,
+                  "b_constraint": self.b_constraint.get_config() if self.b_constraint else None,
+                  "input_dim": self.input_dim}
+        base_config = super(TiedHighway, self).get_config()
+        return dict(list(base_config.items()) + list(config.items()))
 
 class TimeDistributedDense(Layer):
     '''Apply a same Dense layer for each dimension[1] (time_dimension) input.

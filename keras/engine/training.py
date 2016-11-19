@@ -459,7 +459,7 @@ def generator_queue(generator, max_q_size=10,
 class Model(Container):
 
     def compile(self, optimizer, loss, metrics=[], loss_weights=None,
-                sample_weight_mode=None, **kwargs):
+                sample_weight_mode=None, make_predict=False, **kwargs):
         '''Configures the model for training.
 
         # Arguments
@@ -694,6 +694,8 @@ class Model(Container):
         self.predict_function = None
 
         self._collected_trainable_weights = collect_trainable_weights(self)
+        if make_predict == True:
+            self._make_predict_function()
 
     def _make_train_function(self):
         if not hasattr(self, 'train_function'):
