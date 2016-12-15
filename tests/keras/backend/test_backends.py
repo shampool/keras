@@ -1,4 +1,3 @@
-import sys
 import pytest
 from numpy.testing import assert_allclose
 import numpy as np
@@ -880,6 +879,56 @@ class TestBackend(object):
 
             assert k_s_d.shape == k_d.shape
             assert_allclose(k_s_d, k_d, atol=1e-05)
+
+    def test_map(self):
+        x = np.random.rand(10, 3).astype(np.float32)
+        for K in [KTF, KTH]:
+            kx = K.eval(K.map_fn(K.sum, x))
+
+            assert (10,) == kx.shape
+            assert_allclose(x.sum(axis=1), kx, atol=1e-05)
+
+    def test_foldl(self):
+        x = np.random.rand(10, 3).astype(np.float32)
+        for K in [KTF, KTH]:
+            kx = K.eval(K.foldl(lambda a, b: a+b, x))
+
+            assert (3,) == kx.shape
+            assert_allclose(x.sum(axis=0), kx, atol=1e-05)
+
+    def test_foldr(self):
+        # This test aims to make sure that we walk the array from right to left
+        # and checks it in the following way: multiplying left to right 1e-40
+        # cannot be held into a float32 so it causes an underflow while from
+        # right to left we have no such problem and the result is larger
+        x = np.array([1e-20, 1e-20, 10, 10, 10], dtype=np.float32)
+        for K in [KTF, KTH]:
+            p1 = K.eval(K.foldl(lambda a, b: a*b, x))
+            p2 = K.eval(K.foldr(lambda a, b: a*b, x))
+
+            assert p1 < p2
+            assert 9e-38 < p2 <= 1e-37
+
+    def test_arange(self):
+        for test_value in (-20, 0, 1, 10):
+            t_a = KTF.arange(test_value)
+            a = KTF.eval(t_a)
+            assert(np.array_equal(a, np.arange(test_value)))
+            t_b = KTH.arange(test_value)
+            b = KTH.eval(t_b)
+            assert(np.array_equal(b, np.arange(test_value)))
+            assert(np.array_equal(a, b))
+            assert(KTF.dtype(t_a) == KTH.dtype(t_b), 'default dtypes are equal')
+        for start, stop, step in ((0, 5, 1), (-5, 5, 2), (0, 1, 2)):
+            a = KTF.eval(KTF.arange(start, stop, step))
+            assert(np.array_equal(a, np.arange(start, stop, step)))
+            b = KTH.eval(KTH.arange(start, stop, step))
+            assert(np.array_equal(b, np.arange(start, stop, step)))
+            assert(np.array_equal(a, b))
+        for dtype in ('int32', 'int64', 'float32', 'float64'):
+            for backend in (KTF, KTH):
+                t = backend.arange(10, dtype=dtype)
+                assert(backend.dtype(t) == dtype)
 
 
 if __name__ == '__main__':

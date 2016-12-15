@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 import numpy as np
 from . import backend as K
+from .utils.generic_utils import get_from_module
 
 
 def get_fans(shape, dim_ordering='th',**kwargs):
@@ -20,7 +21,7 @@ def get_fans(shape, dim_ordering='th',**kwargs):
             fan_in = shape[-2] * receptive_field_size
             fan_out = shape[-1] * receptive_field_size
         else:
-            raise Exception('Invalid dim_ordering: ' + dim_ordering)
+            raise ValueError('Invalid dim_ordering: ' + dim_ordering)
     else:
         # no specific assumptions
         fan_in = np.sqrt(np.prod(shape))
@@ -105,8 +106,8 @@ def orthogonal(shape, scale=1., name=None, symbolic=True,**kwargs):
 
 def identity(shape, scale=1, dim_ordering='tf',name=None,symbolic=True,**kwargs):
     if len(shape) != 2 or shape[0] != shape[1]:
-        raise Exception('Identity matrix initialization can only be used '
-                        'for 2D square matrices.')
+        raise ValueError('Identity matrix initialization can only be used '
+                         'for 2D square matrices.')
     else:
         if symbolic:
            return K.variable(scale * np.identity(shape[0]), name=name)  
@@ -182,7 +183,6 @@ def conv_orthogonal(shape,dim_ordering='th', name=None,symbolic=True, **kwargs):
     else:
       return this_data
 
-from .utils.generic_utils import get_from_module
 def get(identifier, **kwargs):
     return get_from_module(identifier, globals(),
                            'initialization', kwargs=kwargs)
