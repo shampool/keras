@@ -14,7 +14,7 @@ except ImportError:
     from theano.sandbox.softsign import softsign as T_softsign
 import inspect
 import numpy as np
-from .common import _FLOATX, _EPSILON, image_dim_ordering
+from .common import _FLOATX, floatx, _EPSILON, image_dim_ordering
 py_all = all
 
 
@@ -63,9 +63,11 @@ def to_dense(tensor):
         return tensor
 
 
-def variable(value, dtype=_FLOATX, name=None):
+def variable(value, dtype=None, name=None):
     '''Instantiates a variable.
     '''
+    if dtype is None:
+        dtype = floatx()
     if hasattr(value, 'tocoo'):
         _assert_sparse_module()
         return th_sparse_module.as_sparse_variable(value)
@@ -74,9 +76,11 @@ def variable(value, dtype=_FLOATX, name=None):
         return theano.shared(value=value, name=name, strict=False)
 
 
-def placeholder(shape=None, ndim=None, dtype=_FLOATX, sparse=False, name=None):
+def placeholder(shape=None, ndim=None, dtype=None, sparse=False, name=None):
     '''Instantiate an input data placeholder variable.
     '''
+    if dtype is None:
+        dtype = floatx()
     if shape is None and ndim is None:
         raise ValueError('Specify either a shape or ndim value.')
     if shape is not None:
@@ -124,38 +128,44 @@ def eval(x):
     return to_dense(x).eval()
 
 
-def zeros(shape, dtype=_FLOATX, name=None):
+def zeros(shape, dtype=None, name=None):
     '''Instantiates an all-zeros variable.
     '''
+    if dtype is None:
+        dtype = floatx()
     return variable(np.zeros(shape), dtype, name)
 
 
-def ones(shape, dtype=_FLOATX, name=None):
+def ones(shape, dtype=None, name=None):
     '''Instantiates an all-ones variable.
     '''
+    if dtype is None:
+        dtype = floatx()
     return variable(np.ones(shape), dtype, name)
 
 
-def eye(size, dtype=_FLOATX, name=None):
+def eye(size, dtype=None, name=None):
     '''Instantiates an identity matrix.
     '''
+    if dtype is None:
+        dtype = floatx()
     return variable(np.eye(size), dtype, name)
 
 
-def ones_like(x):
+def ones_like(x, name=None):
     return T.ones_like(x)
 
 
-def zeros_like(x):
+def zeros_like(x, name=None):
     return T.zeros_like(x)
 
 
-def random_uniform_variable(shape, low, high, dtype=_FLOATX, name=None):
+def random_uniform_variable(shape, low, high, dtype=None, name=None):
     return variable(np.random.uniform(low=low, high=high, size=shape),
                     dtype=dtype, name=name)
 
 
-def random_normal_variable(shape, mean, scale, dtype=_FLOATX, name=None):
+def random_normal_variable(shape, mean, scale, dtype=None, name=None):
     return variable(np.random.normal(loc=0.0, scale=scale, size=shape),
                     dtype=dtype, name=name)
 
@@ -316,6 +326,7 @@ def mean(x, axis=None, keepdims=False):
             old_keras_shape.pop(axis)
         output._keras_shape = tuple(old_keras_shape)
     return output
+
 
 
 def std(x, axis=None, keepdims=False):
@@ -826,7 +837,7 @@ def spatial_3d_padding(x, padding=(1, 1, 1), dim_ordering='default'):
     return T.set_subtensor(output[indices], x)
 
 
-def pack(x):
+def stack(x):
     return T.stack(*x)
 
 
@@ -850,6 +861,9 @@ def reverse(x, axes):
     slices = [slice(None, None, -1) if i in axes else slice(None, None, None) for i in range(x.ndim)]
     return x[slices]
 
+
+def pattern_broadcast(x, broatcastable):
+    return T.patternbroadcast(x, broatcastable)
 
 # VALUE MANIPULATION
 
@@ -894,6 +908,11 @@ def print_tensor(x, message=''):
 class Function(object):
 
     def __init__(self, inputs, outputs, updates=[], **kwargs):
+        unique_variables_to_update = {}
+        for v, nv in updates:
+            if v not in unique_variables_to_update:
+                unique_variables_to_update[v] = nv
+        updates = unique_variables_to_update.items()
         self.function = theano.function(inputs, outputs, updates=updates,
                                         allow_input_downcast=True,
                                         on_unused_input='ignore',
@@ -2011,21 +2030,28 @@ def lrn(x, alpha = 1e-4, k = 2, beta=0.75, n =5,dim_ordering = 'th', **kwargs):
     else:
         raise Exception('Unknown dim_ordering: ' + str(dim_ordering))
         
-def random_normal(shape, mean=0.0, std=1.0, dtype=_FLOATX, seed=None):
+
+def random_normal(shape, mean=0.0, std=1.0, dtype=None, seed=None):
+    if dtype is None:
+        dtype = floatx()
     if seed is None:
         seed = np.random.randint(1, 10e6)
     rng = RandomStreams(seed=seed)
     return rng.normal(size=shape, avg=mean, std=std, dtype=dtype)
 
 
-def random_uniform(shape, low=0.0, high=1.0, dtype=_FLOATX, seed=None):
+def random_uniform(shape, low=0.0, high=1.0, dtype=None, seed=None):
+    if dtype is None:
+        dtype = floatx()
     if seed is None:
         seed = np.random.randint(1, 10e6)
     rng = RandomStreams(seed=seed)
     return rng.uniform(shape, low=low, high=high, dtype=dtype)
 
 
-def random_binomial(shape, p=0.0, dtype=_FLOATX, seed=None):
+def random_binomial(shape, p=0.0, dtype=None, seed=None):
+    if dtype is None:
+        dtype = floatx()
     if seed is None:
         seed = np.random.randint(1, 10e6)
     rng = RandomStreams(seed=seed)
