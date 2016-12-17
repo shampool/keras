@@ -1235,7 +1235,7 @@ def l2_normalize(x, axis):
 
 
 def conv2d(x, kernel, strides=(1, 1), border_mode='valid',
-           dim_ordering=_IMAGE_DIM_ORDERING, image_shape=None,
+           dim_ordering='default', image_shape=None,
            filter_shape=None, filter_dilation=(1, 1)):
     '''2D convolution.
     # Arguments
@@ -1246,6 +1246,9 @@ def conv2d(x, kernel, strides=(1, 1), border_mode='valid',
             Whether to use Theano or TensorFlow dimension ordering
         in inputs/kernels/ouputs.
     '''
+    if dim_ordering == 'default':
+        dim_ordering = image_dim_ordering()
+
     if dim_ordering not in {'th', 'tf'}:
         raise Exception('Unknown dim_ordering ' + str(dim_ordering))
 
@@ -1279,7 +1282,6 @@ def conv2d(x, kernel, strides=(1, 1), border_mode='valid',
 
 def in_top_k(predictions, targets, k):
     '''Returns whether the `targets` are in the top `k` `predictions`
-
     # Arguments
         predictions: A tensor of shape batch_size x classess and type float32.
         targets: A tensor of shape batch_size and type int32 or int64.

@@ -36,103 +36,6 @@ from tensorflow.python.ops.gen_nn_ops import *
 
 # Aliases for some automatically-generated names.
 local_response_normalization = gen_nn_ops.lrn
-def atrous_conv2d(value, filters, rate, padding, name=None):
-  with ops.op_scope([value, filters], name, "atrous_conv2d") as name:
-    value = ops.convert_to_tensor(value, name="value")
-    filters = ops.convert_to_tensor(filters, name="filters")
-    value_shape = value.get_shape()
-    filter_shape = filters.get_shape()
-    if not value_shape[3].is_compatible_with(filter_shape[2]):
-      raise ValueError(
-          "value's input channels does not match filters' input channels, "
-          "{} != {}".format(value_shape[3], filter_shape[2]))
-    if rate < 1:
-      raise ValueError("rate {} cannot be less than one".format(rate))
-
-    if rate == 1:
-      value = gen_nn_ops.conv2d(input=value,
-                                filter=filters,
-                                strides=[1, 1, 1, 1],
-                                padding=padding)
-      return value
-
-    # We have two padding contributions. The first is used for converting "SAME"
-    # to "VALID". The second is required so that the height and width of the
-    # zero-padded value tensor are multiples of rate.
-
-    # Spatial dimensions of original input
-    value_shape = array_ops.shape(value)
-    in_height = value_shape[1]
-    in_width = value_shape[2]
-
-    # Spatial dimensions of the filters and the upsampled filters in which we
-    # introduce (rate - 1) zeros between consecutive filter values.
-    filter_shape = array_ops.shape(filters)
-    filter_height = filter_shape[0]
-    filter_width = filter_shape[1]
-    filter_height_up = filter_height + (filter_height - 1) * (rate - 1)
-    filter_width_up = filter_width + (filter_width - 1) * (rate - 1)
-
-    # Padding required to reduce to "VALID" convolution
-    if padding == "SAME":
-      pad_height = filter_height_up - 1
-      pad_width = filter_width_up - 1
-    elif padding == "VALID":
-      pad_height = 0
-      pad_width = 0
-    else:
-      raise ValueError("Invalid padding")
-    # When padding is "SAME" and the pad_height (pad_width) is odd, we pad more
-    # to bottom (right), following the same convention as conv2d().
-    pad_top = math_ops.floordiv(pad_height, 2)
-    pad_bottom = pad_height - pad_top
-    pad_left = math_ops.floordiv(pad_width, 2)
-    pad_right = pad_width - pad_left
-
-    # More padding so that rate divides the height and width of the input value
-    in_height = in_height + pad_top + pad_bottom
-    in_width = in_width + pad_left + pad_right
-
-    mod_height = math_ops.mod(in_height, rate)
-    mod_width = math_ops.mod(in_width, rate)
-    null = constant_op.constant(0)
-    pad_bottom_extra = control_flow_ops.cond(gen_math_ops.equal(mod_height, 0), lambda: null, lambda: rate - mod_height)
-    pad_right_extra = control_flow_ops.cond(gen_math_ops.equal(mod_width, 0), lambda: null, lambda: rate - mod_width)
-
-    # The paddings argument to space_to_batch includes both padding components
-    pad_bottom = pad_bottom + pad_bottom_extra
-    pad_right = pad_right + pad_right_extra
-    print 'hahahaha'
-    v = array_ops.expand_dims(array_ops.pack([pad_top, pad_bottom]),1)
-    h = array_ops.expand_dims(array_ops.pack([pad_left, pad_right]),1)
-    space_to_batch_pad = array_ops.concat(1, [v,h])
-    space_to_batch_pad = [[pad_top, pad_bottom],
-                          [pad_left, pad_right]]
-
-    value = array_ops.space_to_batch(input=value,
-                                     paddings=space_to_batch_pad,
-                                     block_size=rate)
-
-    value = gen_nn_ops.conv2d(input=value,
-                              filter=filters,
-                              strides=[1, 1, 1, 1],
-                              padding="VALID",
-                              name=name)
-
-    # The crops argument to batch_to_space is just the extra padding component
-    v = array_ops.expand_dims(array_ops.pack([0, pad_bottom_extra]),1)
-    h = array_ops.expand_dims(array_ops.pack([0, pad_right_extra]),1)
-    batch_to_space_crop = array_ops.concat(1, [v,h])
-    batch_to_space_crop = [[0, pad_bottom_extra], [0, pad_right_extra]]
-    value = array_ops.batch_to_space(input=value,
-                                     crops=batch_to_space_crop,
-                                     block_size=rate)
-
-    return value
-
-
-
-
 
 # INTERNAL UTILS
 
@@ -230,7 +133,7 @@ def get_session():
     if not _MANUAL_VAR_INIT:
         _initialize_variables()
     return session
-    
+
 def set_session(session):
     '''Sets the global TF session.
     '''
