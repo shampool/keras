@@ -2095,7 +2095,7 @@ class Resize3D(Layer):
     def get_config(self):
         config = {'name': self.__class__.__name__,
                   }
-        base_config = super(Resize2D, self).get_config()
+        base_config = super(Resize3D, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
 
 
@@ -2156,15 +2156,15 @@ class Resize2D(Layer):
                     input_shape[3])
 
     def call(self, X,  mask=None):
-        input_shape =  list(K.shape(X))
-        tmp_output_shape = list(self.destin_shape)
+        input_shape =  K.shape(X)
+        tmp_output_shape = self.destin_shape
         if self.dim_ordering == 'th':
             destsize = tmp_output_shape[2:4]
         elif self.dim_ordering == 'tf':
             destsize = tmp_output_shape[1:3]
 
         if self.dim_ordering == 'th':
-            destsize = list(destsize)
+            #destsize = list(destsize)
             row_residual = (destsize[0] - input_shape[2])
             col_residual = (destsize[1] - input_shape[3])
 

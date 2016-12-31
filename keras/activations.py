@@ -16,10 +16,11 @@ def softmax(x):
                          'that is not 2D or 3D. '
                          'Here, ndim=' + str(ndim))
 
-
 def elu(x, alpha=1.0):
     return K.elu(x, alpha)
 
+def lrelu(x, alpha=0.3):
+    return K.relu(x, alpha)
 
 def softplus(x):
     return K.softplus(x)

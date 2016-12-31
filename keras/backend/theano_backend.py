@@ -1470,51 +1470,6 @@ def conv1d(x, kernel, stride=1, border_mode='valid',
     raise NotImplementedError
 
 
-def conv2d(x, kernel, strides=(1, 1), border_mode='valid',
-           dim_ordering='default', image_shape=None,
-           filter_shape=None, filter_dilation=(1, 1)):
-    '''2D convolution.
-
-    # Arguments
-        kernel: kernel tensor.
-        strides: strides tuple.
-        border_mode: string, "same" or "valid".
-        dim_ordering: "tf" or "th".
-            Whether to use Theano or TensorFlow dimension ordering
-        in inputs/kernels/ouputs.
-    '''
-    if dim_ordering == 'default':
-        dim_ordering = image_dim_ordering()
-    if dim_ordering not in {'th', 'tf'}:
-        raise ValueError('Unknown dim_ordering ', dim_ordering)
-
-    x = _preprocess_conv2d_input(x, dim_ordering)
-    kernel = _preprocess_conv2d_kernel(kernel, dim_ordering)
-    th_border_mode = _preprocess_border_mode(border_mode)
-    np_kernel = kernel.eval()
-    image_shape = _preprocess_conv2d_image_shape(dim_ordering, image_shape)
-    filter_shape = _preprocess_conv2d_filter_shape(dim_ordering, filter_shape)
-
-    # TODO: remove the if statement when theano with no filter dilation is deprecated.
-    if filter_dilation == (1, 1):
-        conv_out = T.nnet.conv2d(x, kernel,
-                                 border_mode=th_border_mode,
-                                 subsample=strides,
-                                 input_shape=image_shape,
-                                 filter_shape=filter_shape)
-    else:
-        conv_out = T.nnet.conv2d(x, kernel,
-                                 border_mode=th_border_mode,
-                                 subsample=strides,
-                                 input_shape=image_shape,
-                                 filter_shape=filter_shape,
-                                 filter_dilation=filter_dilation)
-
-    conv_out = _postprocess_conv2d_output(conv_out, x, border_mode, np_kernel,
-                                          strides, dim_ordering)
-    return conv_out
-
-
 def deconv2d(x, kernel, output_shape, strides=(1, 1),
              border_mode='valid',
              dim_ordering='default',

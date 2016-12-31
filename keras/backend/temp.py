@@ -12,14 +12,15 @@ import numpy as np
 import os
 import copy
 import warnings
-from .common import floatx, _FLOATX, _EPSILON, image_dim_ordering, reset_uids
+from .common import floatx, _EPSILON, image_dim_ordering, reset_uids
 py_all = all
-FLOATX = _FLOATX
+
 # INTERNAL UTILS
 
 # This is the default internal TF session used by Keras.
 # It can be set manually via `set_session(sess)`.
 _SESSION = None
+
 # This dictionary holds a mapping {graph: learning_phase}.
 # A learning phase is a bool tensor used to run Keras models in
 # either train mode (learning_phase == 1) or test mode (learning_phase == 0).
@@ -118,7 +119,6 @@ def get_session():
     if not _MANUAL_VAR_INIT:
         _initialize_variables()
     return session
-
 
 def set_session(session):
     '''Sets the global TF session.
@@ -352,7 +352,7 @@ def int_shape(x):
         x: Tensor or variable.
 
     # Returns
-        A tuple of integers (or None entries).
+        A tuple of integers.
 
     # Examples
     ```python
@@ -486,7 +486,9 @@ def ones(shape, dtype=None, name=None):
 
     # Arguments
         shape: Tuple of integers, shape of returned Keras variable.
+
         dtype: String, data type of returned Keras variable.
+
         name: String, name of returned Keras variable.
 
     # Returns
@@ -515,7 +517,9 @@ def eye(size, dtype=None, name=None):
 
     # Arguments
         size: Integer, number of rows/columns.
+
         dtype: String, data type of returned Keras variable.
+
         name: String, name of returned Keras variable.
 
     # Returns
@@ -588,10 +592,15 @@ def random_uniform_variable(shape, low, high, dtype=None,
 
     # Arguments
         shape: Tuple of integers, shape of returned Keras variable.
+
         low: Float, lower boundary of the output inteval.
+
         high: Float, upper boundary of the output interval.
+
         dtype: String, dtype of returned Keras variable.
+
         name: String, name of returned Keras variable.
+
         seed: Integer, random seed.
 
     # Returns
@@ -627,10 +636,15 @@ def random_normal_variable(shape, mean, scale, dtype=None,
 
     # Arguments
         shape: Tuple of integers, shape of returned Keras variable.
+
         mean: Float, mean of the normal distribution.
+
         scale: Float, standard deviation of the normal distribution.
+
         dtype: String, dtype of returned Keras variable.
+
         name: String, name of returned Keras variable.
+
         seed: Integer, random seed.
 
     # Returns
@@ -768,7 +782,7 @@ def dot(x, y):
         >>> y = K.placeholder(shape=(3, 4))
         >>> xy = K.dot(x, y)
         >>> xy
-        <tf.Tensor 'MatMul_9:0' shape=(32, 28, 4) dtype=float32>
+        <tf.Tensor 'MatMul_9:0' shape=(2, 4) dtype=float32>
     ```
 
     ```python
@@ -781,20 +795,8 @@ def dot(x, y):
     ```
     '''
     if ndim(x) is not None and (ndim(x) > 2 or ndim(y) > 2):
-        x_shape = []
-        for i, s in zip(int_shape(x), tf.unpack(tf.shape(x))):
-            if s is None:
-                x_shape.append(i)
-            else:
-                x_shape.append(s)
-        x_shape = tuple(x_shape)
-        y_shape = []
-        for i, s in zip(int_shape(y), tf.unpack(tf.shape(y))):
-            if s is None:
-                y_shape.append(i)
-            else:
-                y_shape.append(s)
-        y_shape = tuple(y_shape)
+        x_shape = (-1,) + int_shape(x)[1:]
+        y_shape = int_shape(y)
         y_permute_dim = list(range(ndim(y)))
         y_permute_dim = [y_permute_dim.pop(-2)] + y_permute_dim
         xt = tf.reshape(x, [-1, x_shape[-1]])
@@ -1225,8 +1227,7 @@ def concatenate(tensors, axis=-1):
 def reshape(x, shape):
     '''Reshapes a tensor to the specified shape.
     '''
-    return tf.reshape(x, shape)
-
+    return tf.reshape(x, tf.pack(list(shape)))
 
 def permute_dimensions(x, pattern):
     '''Permutes axes in a tensor.
@@ -1261,7 +1262,7 @@ def resize_images(X, height_factor, width_factor, dim_ordering):
         new_shape *= tf.constant(np.array([height_factor, width_factor]).astype('int32'))
         X = tf.image.resize_nearest_neighbor(X, new_shape)
         X.set_shape((None, original_shape[1] * height_factor if original_shape[1] is not None else None,
-                   original_shape[2] * width_factor if original_shape[2] is not None else None, None))
+                    original_shape[2] * width_factor if original_shape[2] is not None else None, None))
         return X
     else:
         raise ValueError('Invalid dim_ordering:', dim_ordering)
@@ -2094,6 +2095,30 @@ def _preprocess_conv2d_input(x, dim_ordering):
     return x
 
 
+def conv2d(x, kernel, strides=(1, 1), border_mode='valid', dim_ordering='th',
+           image_shape=None, filter_shape=None, dilated = 0, rate = 1):
+    '''2D convolution.
+
+    # Arguments
+        kernel: kernel tensor.
+        strides: strides tuple.
+        border_mode: string, "same" or "valid".
+        dim_ordering: "tf" or "th". Whether to use Theano or TensorFlow dimension ordering
+        in inputs/kernels/ouputs.
+        dilated: 1 whether to use dilated (or atrous) convolution
+        rate: the rate for atrous_conv2d
+    '''
+    if border_mode == 'same':
+        padding = 'SAME'
+    elif border_mode == 'valid':
+        padding = 'VALID'
+    else:
+        raise Exception('Invalid border mode: ' + str(border_mode))
+
+
+    strides = (1,) + strides + (1,)
+
+
 def _preprocess_conv3d_input(x, dim_ordering):
     if dtype(x) == 'float64':
         x = tf.cast(x, 'float32')
@@ -2106,6 +2131,7 @@ def _preprocess_conv3d_input(x, dim_ordering):
     return x
 
 
+
 def _preprocess_conv2d_kernel(kernel, dim_ordering):
     if dtype(kernel) == 'float64':
         kernel = tf.cast(kernel, 'float32')
@@ -2115,6 +2141,21 @@ def _preprocess_conv2d_kernel(kernel, dim_ordering):
         # TH kernel shape: (depth, input_depth, rows, cols)
         # TF kernel shape: (rows, cols, input_depth, depth)
         kernel = tf.transpose(kernel, (2, 3, 1, 0))
+
+        if dilated == 0:
+           x = tf.nn.conv2d(x, kernel, strides, padding=padding)
+        else:
+           x= atrous_conv2d(x, kernel, rate = rate, padding=padding )
+           #x= tf.nn.atrous_conv2d(x, kernel, rate = rate, padding=padding )
+
+        x = tf.transpose(x, (0, 3, 1, 2))
+    elif dim_ordering == 'tf':
+        if dilated == 0:
+           x = tf.nn.conv2d(x, kernel, strides, padding=padding)
+        else:
+           x= atrous_conv2d(x, kernel, rate = rate, padding=padding )
+           #x= tf.nn.atrous_conv2d(x, kernel, rate = rate, padding=padding )
+
     return kernel
 
 
@@ -2135,6 +2176,7 @@ def _preprocess_border_mode(border_mode):
         padding = 'SAME'
     elif border_mode == 'valid':
         padding = 'VALID'
+
     else:
         raise ValueError('Invalid border mode:', border_mode)
     return padding
@@ -2375,31 +2417,7 @@ def pool3d(x, pool_size, strides=(1, 1, 1), border_mode='valid',
 
     return _postprocess_conv3d_output(x, dim_ordering)
 
-def spatial_2d_padding_4specify(x, padding=(1, 1,1,1), dim_ordering='th'):
-    '''Pad the 2nd and 3rd dimensions of a 4D tensor
-    with "padding[0]" and "padding[1]" (resp.) zeros left and right.
-    padding[0], and padding[1] are for left part for row and cols
-    padding[2]  and padding[3] are for right part for row and col
-    '''
-    original_shape = int_shape(x)
-    if dim_ordering == 'th':
-        pattern = [[0, 0], [0, 0],
-                   [padding[0], padding[2]], [padding[1], padding[3]]]
-    else:
-        pattern = [[0, 0],
-                   [padding[0], padding[2]], [padding[1], padding[3]],
-                   [0, 0]]
-    res = tf.pad(x, pattern)
-#    if dim_ordering == 'th':        
-#        res.set_shape((original_shape[0], original_shape[1], 
-#                       original_shape[2] + padding[0]+ padding[2],
-#                       original_shape[3] + padding[1]+ padding[3]))
-#    else:    
-#        res.set_shape((original_shape[0], original_shape[1] + padding[0]+ padding[2],
-#                       original_shape[2] + padding[1]+ padding[3], 
-#                       original_shape[3]))               
-    return res
-
+# Padding
 def spatial_2d_cropping_4specify(x, cropping=(1, 1, 1, 1), dim_ordering='th'):
     '''Pad the 2nd and 3rd dimensions of a 4D tensor
      cropping[0], and cropping[1] are for left part for row and cols
@@ -2431,6 +2449,36 @@ def spatial_2d_cropping_4specify(x, cropping=(1, 1, 1, 1), dim_ordering='th'):
     else:
         raise Exception('Invalid dim_ordering: ' + dim_ordering)
     return x[indices]
+
+
+
+def lrn(x, alpha = 1e-4, k = 2, beta=0.75, n =5,dim_ordering = 'th' ,**kwargs):
+    if dim_ordering == 'th':
+        x = tf.transpose(x, (0, 2, 3, 1))
+        res = tf.nn.local_response_normalization(x, depth_radius=n//2, bias=k, alpha=alpha, beta=beta)
+        res = tf.transpose(res,(0,3,1,2))
+        return res
+    elif dim_ordering == 'tf':
+        return tf.nn.local_response_normalization(input, depth_radius=n//2, bias=k, alpha=alpha, beta=beta)
+    else:
+        raise Exception('Unknown dim_ordering: ' + str(dim_ordering))
+
+def spatial_2d_padding_4specify(x, padding=(1, 1,1,1), dim_ordering='th'):
+    '''Pad the 2nd and 3rd dimensions of a 4D tensor
+    with "padding[0]" and "padding[1]" (resp.) zeros left and right.
+    padding[0], and padding[1] are for left part for row and cols
+    padding[2]  and padding[3] are for right part for row and col
+    '''
+
+    if dim_ordering == 'th':
+        pattern = [[0, 0], [0, 0],
+                   [padding[0], padding[2]], [padding[1], padding[3]]]
+    else:
+        pattern = [[0, 0],
+                   [padding[0], padding[2]], [padding[1], padding[3]],
+                   [0, 0]]
+    return tf.pad(x, pattern)
+
 # RANDOMNESS
 
 def random_normal(shape, mean=0.0, std=1.0, dtype=None, seed=None):
